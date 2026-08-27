@@ -25,6 +25,10 @@ import {
   ListStaff,
   SetStaffActive,
 } from "@/application/use-cases/manage-staff";
+import {
+  GetBusinessSettings,
+  UpdateBusinessSettings,
+} from "@/application/use-cases/manage-settings";
 import { AddStock, AdjustStock } from "@/application/use-cases/manage-stock";
 import { UpdateProduct } from "@/application/use-cases/update-product";
 import {
@@ -144,6 +148,10 @@ export async function getUseCases() {
     listStaff: new ListStaff(repos.staff),
     assignRole: new AssignRole(repos.staff),
     setStaffActive: new SetStaffActive(repos.staff),
+
+    // Settings
+    getBusinessSettings: new GetBusinessSettings(repos.settings),
+    updateBusinessSettings: new UpdateBusinessSettings(repos.settings),
 
     // Reports
     getDashboard: new GetDashboard(repos.reports),

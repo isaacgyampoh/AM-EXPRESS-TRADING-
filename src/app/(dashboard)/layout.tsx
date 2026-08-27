@@ -7,8 +7,11 @@ import { SettingsProvider } from "@/presentation/components/settings-provider";
 import {
   BoxIcon,
   CartIcon,
+  ChartIcon,
   HomeIcon,
+  PeopleIcon,
   ReceiptIcon,
+  SettingsIcon,
   WalletIcon,
 } from "@/presentation/components/ui/icons";
 
@@ -40,10 +43,9 @@ export default async function DashboardLayout({
   const { settings } = await repositories();
   const businessSettings = await settings.get();
 
-  // Ordered by how often each is used, because on a phone the bottom bar is
-  // thumb-ordered: selling is what a cashier does all day, so it comes first
-  // after home.
-  const navItems: NavItem[] = [
+  // Ordered by how often each is reached for. On a phone the bottom bar is
+  // thumb-ordered, and selling is what a cashier does all day.
+  const primaryNav: NavItem[] = [
     { href: "/dashboard", label: "Home", icon: <HomeIcon /> },
     { href: "/pos", label: "Sell", icon: <CartIcon /> },
     { href: "/products", label: "Products", icon: <BoxIcon /> },
@@ -54,18 +56,40 @@ export default async function DashboardLayout({
     },
   ];
 
+  // Everything an owner needs occasionally rather than constantly. On a phone
+  // these sit behind "More"; the desktop rail has room to show them outright.
+  const secondaryNav: NavItem[] = [];
+
+  if (staff.can("report:sales")) {
+    secondaryNav.push({
+      href: "/reports",
+      label: "Reports",
+      icon: <ChartIcon />,
+    });
+  }
   if (staff.can("expense:read")) {
-    navItems.push({
+    secondaryNav.push({
       href: "/expenses",
       label: "Expenses",
       icon: <WalletIcon />,
+    });
+  }
+  if (staff.can("staff:read")) {
+    secondaryNav.push({ href: "/staff", label: "Staff", icon: <PeopleIcon /> });
+  }
+  if (staff.can("settings:write")) {
+    secondaryNav.push({
+      href: "/settings",
+      label: "Settings",
+      icon: <SettingsIcon />,
     });
   }
 
   return (
     <SettingsProvider settings={toBusinessSettingsDto(businessSettings)}>
       <AppShell
-        navItems={navItems}
+        navItems={primaryNav}
+        secondaryNavItems={secondaryNav}
         staffName={staff.fullName}
         roleLabel={staff.role.isAdmin ? "Administrator" : "Cashier"}
       >

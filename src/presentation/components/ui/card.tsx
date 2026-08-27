@@ -61,8 +61,14 @@ export function CardBody({
 /**
  * A headline figure.
  *
- * The number is the largest thing on it, with tabular figures so a dashboard
- * refreshing every minute does not make the row twitch as digits change width.
+ * Proportional figures, not tabular: `tabular-nums` gives every digit the width
+ * of a zero, which at this size makes a number like 121 look loose and gappy.
+ * Tabular figures are for columns that must align vertically — table rows and
+ * axis ticks — not for a single large number.
+ *
+ * Tone is reserved for state the label also states in words, so the tile still
+ * reads correctly in greyscale, or to someone who cannot tell the amber from
+ * the green.
  */
 export function StatTile({
   label,
@@ -85,9 +91,7 @@ export function StatTile({
   return (
     <Card className="p-4">
       <p className="text-sm text-[var(--text-muted)]">{label}</p>
-      <p className={cn("mt-1 text-2xl font-semibold numeric", tones[tone])}>
-        {value}
-      </p>
+      <p className={cn("mt-1 text-2xl font-semibold", tones[tone])}>{value}</p>
       {sublabel && (
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">{sublabel}</p>
       )}

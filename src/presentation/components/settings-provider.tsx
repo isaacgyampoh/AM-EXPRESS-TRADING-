@@ -46,17 +46,28 @@ export function useMoneyFormatter() {
 /**
  * Money on screen.
  *
- * Always tabular figures, so a column of prices lines up and a total that
+ * Tabular figures by default, so a column of prices lines up and a total that
  * changes as items are added does not shift the layout under the cashier's
  * thumb.
+ *
+ * Set `tabular={false}` for a single large figure standing on its own: tabular
+ * numerals give every digit the width of a zero, which at display sizes makes
+ * a number like 121 look gappy. Alignment is what tabular is for, and a lone
+ * figure has nothing to align with.
  */
 export function Money({
   amount,
   className,
+  tabular = true,
 }: {
   amount: string;
   className?: string;
+  tabular?: boolean;
 }) {
   const format = useMoneyFormatter();
-  return <span className={`numeric ${className ?? ""}`}>{format(amount)}</span>;
+  return (
+    <span className={`${tabular ? "numeric " : ""}${className ?? ""}`}>
+      {format(amount)}
+    </span>
+  );
 }
