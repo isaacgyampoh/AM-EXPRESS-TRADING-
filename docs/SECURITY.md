@@ -119,3 +119,9 @@ Honest gaps, as of the foundation phase:
 - **Offline sales.** Not implemented, and deliberately so: a queue of
   unsynchronised transactions that can double-post is worse than being told the
   network is down.
+- **Visual verification of the signed-in screens.** The sign-in and offline
+  pages were rendered and measured at 320, 390, 768 and 1280px with no
+  horizontal overflow and no console errors. Everything behind authentication
+  needs a live Supabase project to render, so it has been verified by its
+  tests and its types rather than by looking at it. Walk Step 6 of
+  DEPLOYMENT.md on a phone before trusting it with a customer.

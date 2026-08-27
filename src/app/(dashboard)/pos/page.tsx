@@ -3,6 +3,7 @@ import { requireStaff } from "@/infrastructure/auth/session";
 import { getUseCases } from "@/infrastructure/container";
 import { PageHeader } from "@/presentation/components/app-shell";
 import { PosTerminal } from "@/presentation/components/pos/pos-terminal";
+import { InstallPrompt } from "@/presentation/components/pwa/install-prompt";
 import { completeSaleAction, searchPosProductsAction } from "./actions";
 
 export const metadata: Metadata = { title: "Sell" };
@@ -30,6 +31,8 @@ export default async function PosPage() {
         title="Sell"
         description="Tap a product to add it to the basket."
       />
+
+      <InstallPrompt />
 
       <PosTerminal
         initialProducts={products.items}

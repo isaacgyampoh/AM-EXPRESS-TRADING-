@@ -22,7 +22,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * against the database, and enforced again by RLS. Deleting this file would
  * make the app annoying to use; it would not make it insecure.
  */
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /offline is public because the service worker serves it from cache with no
+// session at all — redirecting it to sign-in would show a cashier a login page
+// they cannot reach the server to complete.
+const PUBLIC_PATHS = ["/login", "/auth", "/offline"];
 
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

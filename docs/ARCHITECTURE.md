@@ -159,8 +159,9 @@ strings come from environment variables with defaults.
 | --- | --- | --- |
 | Domain | `src/tests/domain` | Money arithmetic, split payments, stock limits, permissions |
 | Application | `src/tests/application` | Use cases over in-memory fakes: orchestration, ordering, error mapping |
+| Component | `src/tests/components` | The payment guard and the basket, in a real DOM |
 | Architecture | `src/tests/architecture` | That the boundary rules actually fire |
-| Database | `supabase/tests` | RLS, atomicity, locking, idempotency — against real PostgreSQL |
+| Database | `supabase/tests` | RLS, atomicity, locking, idempotency, report correctness — against real PostgreSQL |
 
 The fakes in `src/tests/support/fakes.ts` deliberately cannot model atomicity,
 row locks or RLS. Anything they appeared to prove about concurrency would be a

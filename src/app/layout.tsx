@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { branding } from "@/lib/config/branding";
+import { ServiceWorkerRegistrar } from "@/presentation/components/pwa/service-worker";
 import { ToastProvider } from "@/presentation/components/ui/toast";
 import "./globals.css";
 
@@ -49,6 +50,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-dvh antialiased">
         <ToastProvider>{children}</ToastProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
