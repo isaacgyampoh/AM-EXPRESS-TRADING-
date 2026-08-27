@@ -7,7 +7,6 @@ project_id = "am-express-trading"
 
 [db]
 port = 54322
-major_version = 16
 
 [db.migrations]
 enabled = true
