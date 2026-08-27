@@ -40,6 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Next.js AI agent rules — auto-generated, not source
+AGENTS.md
+CLAUDE.md
+
 # Secrets must never be committed. .env* above is ignored wholesale; the
 # example file (variable names only, no values) is the one exception.
 !.env.example
