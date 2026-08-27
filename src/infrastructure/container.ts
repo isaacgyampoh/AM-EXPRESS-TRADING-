@@ -3,17 +3,45 @@ import "server-only";
 import { CompleteSale } from "@/application/use-cases/complete-sale";
 import { CreateProduct } from "@/application/use-cases/create-product";
 import { GetProduct } from "@/application/use-cases/get-product";
+import {
+  GetDashboard,
+  GetExpenseReport,
+  GetInventoryReport,
+  GetProfitReport,
+  GetSalesReport,
+} from "@/application/use-cases/get-reports";
 import { GetStockOverview } from "@/application/use-cases/get-stock-overview";
 import { ListCategories, ListProducts } from "@/application/use-cases/list-products";
+import {
+  CreateExpense,
+  CreateExpenseCategory,
+  DeleteExpense,
+  ListExpenseCategories,
+  ListExpenses,
+} from "@/application/use-cases/manage-expenses";
+import {
+  AssignRole,
+  CreateStaff,
+  ListStaff,
+  SetStaffActive,
+} from "@/application/use-cases/manage-staff";
 import { AddStock, AdjustStock } from "@/application/use-cases/manage-stock";
 import { UpdateProduct } from "@/application/use-cases/update-product";
+import {
+  GenerateReceipt,
+  GetSale,
+  ListSales,
+  VoidSale,
+} from "@/application/use-cases/view-sales";
 import { adminSupabase } from "./supabase/client/admin-client";
 import { serverSupabase } from "./supabase/client/server-client";
+import { SupabaseExpenseRepository } from "./supabase/repositories/supabase-expense-repository";
 import { SupabaseInventoryRepository } from "./supabase/repositories/supabase-inventory-repository";
 import {
   SupabaseCategoryRepository,
   SupabaseProductRepository,
 } from "./supabase/repositories/supabase-product-repository";
+import { SupabaseReportsRepository } from "./supabase/repositories/supabase-reports-repository";
 import { SupabaseSalesRepository } from "./supabase/repositories/supabase-sales-repository";
 import { SupabaseSettingsRepository } from "./supabase/repositories/supabase-settings-repository";
 import { SupabaseStaffRepository } from "./supabase/repositories/supabase-staff-repository";
@@ -41,6 +69,8 @@ export async function repositories() {
     sales: new SupabaseSalesRepository(client),
     settings: new SupabaseSettingsRepository(client),
     staff: new SupabaseStaffRepository(client),
+    expenses: new SupabaseExpenseRepository(client),
+    reports: new SupabaseReportsRepository(client),
   };
 }
 
@@ -69,6 +99,7 @@ export async function getUseCases() {
   const repos = await repositories();
 
   return {
+    // Catalogue
     createProduct: new CreateProduct(
       repos.products,
       repos.categories,
@@ -79,21 +110,58 @@ export async function getUseCases() {
       repos.categories,
       repos.inventory,
     ),
+    getProduct: new GetProduct(repos.products, repos.inventory, repos.categories),
     listProducts: new ListProducts(
       repos.products,
       repos.inventory,
       repos.categories,
     ),
     listCategories: new ListCategories(repos.categories),
-    getProduct: new GetProduct(repos.products, repos.inventory, repos.categories),
     getStockOverview: new GetStockOverview(repos.products, repos.inventory),
     addStock: new AddStock(repos.inventory, repos.products),
     adjustStock: new AdjustStock(repos.inventory, repos.products),
+
+    // Selling
     completeSale: new CompleteSale(
       repos.sales,
       repos.products,
       repos.inventory,
       repos.settings,
     ),
+    listSales: new ListSales(repos.sales),
+    getSale: new GetSale(repos.sales),
+    generateReceipt: new GenerateReceipt(repos.sales, repos.settings),
+    voidSale: new VoidSale(repos.sales),
+
+    // Expenses
+    createExpense: new CreateExpense(repos.expenses),
+    listExpenses: new ListExpenses(repos.expenses),
+    deleteExpense: new DeleteExpense(repos.expenses),
+    listExpenseCategories: new ListExpenseCategories(repos.expenses),
+    createExpenseCategory: new CreateExpenseCategory(repos.expenses),
+
+    // Staff
+    listStaff: new ListStaff(repos.staff),
+    assignRole: new AssignRole(repos.staff),
+    setStaffActive: new SetStaffActive(repos.staff),
+
+    // Reports
+    getDashboard: new GetDashboard(repos.reports),
+    getSalesReport: new GetSalesReport(repos.reports),
+    getInventoryReport: new GetInventoryReport(repos.reports, repos.inventory),
+    getExpenseReport: new GetExpenseReport(repos.reports),
+    getProfitReport: new GetProfitReport(repos.reports),
+  };
+}
+
+/**
+ * Creating a staff account — the only operation that needs the service-role
+ * client. Separate from getUseCases so the privileged path has to be reached
+ * for by name rather than being available everywhere by accident.
+ */
+export async function getPrivilegedUseCases() {
+  const repos = await privilegedRepositories();
+  return {
+    createStaff: new CreateStaff(repos.staff),
   };
 }

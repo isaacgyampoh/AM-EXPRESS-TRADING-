@@ -432,6 +432,81 @@ export interface Database {
         };
         Returns: string;
       };
+      report_sales_summary: {
+        Args: { p_from: string; p_to: string; p_cashier_id?: string | null };
+        Returns: {
+          total_sales: string;
+          transaction_count: number;
+          cash_total: string;
+          mobile_money_total: string;
+          split_transaction_count: number;
+          units_sold: number;
+          average_sale: string;
+        }[];
+      };
+      report_sales_by_product: {
+        Args: { p_from: string; p_to: string; p_limit?: number };
+        Returns: {
+          product_id: string;
+          sku: string;
+          name: string;
+          category_name: string | null;
+          units_sold: number;
+          revenue: string;
+          profit: string | null;
+        }[];
+      };
+      report_sales_by_category: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          category_id: string | null;
+          category_name: string;
+          units_sold: number;
+          revenue: string;
+        }[];
+      };
+      report_sales_by_cashier: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          cashier_id: string;
+          cashier_name: string;
+          transaction_count: number;
+          revenue: string;
+          cash_total: string;
+          mobile_money_total: string;
+        }[];
+      };
+      report_expense_summary: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          grouping_kind: "total" | "category" | "method";
+          grouping_id: string | null;
+          grouping_name: string;
+          total: string;
+        }[];
+      };
+      report_inventory_valuation: {
+        Args: Record<string, never>;
+        Returns: {
+          products_tracked: number;
+          units_on_hand: number;
+          low_stock_count: number;
+          out_of_stock_count: number;
+          value_at_cost: string | null;
+          value_at_selling_price: string;
+        }[];
+      };
+      report_profitability: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          revenue: string;
+          cost_of_goods_sold: string | null;
+          gross_profit: string | null;
+          expenses: string;
+          net_profit: string | null;
+          products_missing_cost: string[];
+        }[];
+      };
       is_admin: { Args: Record<string, never>; Returns: boolean };
       is_active_staff: { Args: Record<string, never>; Returns: boolean };
       current_staff_role: {

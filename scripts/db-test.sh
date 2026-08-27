@@ -65,22 +65,31 @@ for _ in {1..30}; do
   sleep 0.5
 done
 
-psql -q -d postgres -c "create database $DB_NAME" >/dev/null
+# A template database with the shim and every migration applied, so each suite
+# can be created from it in a moment. Suites get a database each: sharing one
+# would make every test depend on the order the others ran in, and a suite that
+# only passes second is not a test.
+echo "Building the schema..."
+psql -q -d postgres -c "create database ${DB_NAME}_template" >/dev/null
+psql -q -d "${DB_NAME}_template" -v ON_ERROR_STOP=1 -f "$ROOT/supabase/tests/supabase-shim.sql"
 
-echo "Applying the Supabase shim..."
-psql -q -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$ROOT/supabase/tests/supabase-shim.sql"
-
-echo "Applying migrations..."
 for migration in "$ROOT"/supabase/migrations/*.sql; do
   printf '  %s\n' "$(basename "$migration")"
-  psql -q -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$migration"
+  psql -q -d "${DB_NAME}_template" -v ON_ERROR_STOP=1 -f "$migration"
 done
 
 echo "Running tests..."
 status=0
+suite_number=0
+
 for suite in "$ROOT"/supabase/tests/*.test.sql; do
+  suite_number=$((suite_number + 1))
+  suite_db="${DB_NAME}_${suite_number}"
+
+  psql -q -d postgres -c "create database $suite_db template ${DB_NAME}_template" >/dev/null
+
   printf '\n%s\n' "$(basename "$suite")"
-  if ! psql -q -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$suite" 2>&1 | sed 's/^NOTICE:  //'; then
+  if ! psql -q -d "$suite_db" -v ON_ERROR_STOP=1 -f "$suite" 2>&1 | sed 's/^NOTICE:  //'; then
     status=1
   fi
 done
