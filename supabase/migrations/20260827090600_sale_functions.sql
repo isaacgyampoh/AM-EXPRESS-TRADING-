@@ -160,9 +160,13 @@ begin
     end if;
 
     if v_stock < v_line.quantity then
+      -- DETAIL is machine-readable on purpose: the repository parses it back
+      -- into a typed InsufficientStockError rather than regexing the sentence.
       raise exception 'Not enough stock for %: % requested, % available.',
         v_product.name, v_line.quantity, v_stock
-        using errcode = 'AM001';
+        using errcode = 'AM001',
+              detail = format('product=%s|requested=%s|available=%s',
+                              v_product.name, v_line.quantity, v_stock);
     end if;
 
     v_total := v_total + (v_product.selling_price * v_line.quantity);
@@ -183,7 +187,7 @@ begin
   if v_paid <> v_total then
     raise exception 'Payment of % does not match the sale total of %.', v_paid, v_total
       using errcode = 'AM002',
-            detail = format('total=%s tendered=%s', v_total, v_paid);
+            detail = format('total=%s|tendered=%s', v_total, v_paid);
   end if;
 
   -- ---------------------------------------------------------------------

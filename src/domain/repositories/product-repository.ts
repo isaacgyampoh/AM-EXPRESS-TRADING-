@@ -47,7 +47,12 @@ export interface ProductRepository {
   /** Bulk read for checkout — one round trip, not one per cart line. */
   findByIds(ids: readonly ProductId[]): Promise<Product[]>;
   search(filter: ProductFilter, page: PageRequest): Promise<Page<Product>>;
-  create(product: NewProduct, actorId: string): Promise<Product>;
+  /**
+   * No actor parameter, deliberately. Who created a product is derived from
+   * the authenticated session inside the database, never passed in — an
+   * argument that could be supplied is an argument that could be forged.
+   */
+  create(product: NewProduct): Promise<Product>;
   update(id: ProductId, changes: ProductChanges): Promise<Product>;
   skuExists(sku: Sku, excludingId?: ProductId): Promise<boolean>;
 }
