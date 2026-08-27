@@ -15,8 +15,9 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --linked > src/infrastructure/supabase/database.types.ts",
-    "verify": "npm run typecheck && npm run lint && npm run test",
-    "test:architecture": "vitest run src/tests/architecture"
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run db:test",
+    "test:architecture": "vitest run src/tests/architecture",
+    "db:test": "bash scripts/db-test.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
