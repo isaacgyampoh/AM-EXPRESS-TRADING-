@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 /**
  * Whether the browser currently believes it is online.
@@ -8,29 +8,28 @@ import { useEffect, useState } from "react";
  * "Believes" is the operative word: `navigator.onLine` reports whether there
  * is a network interface, not whether anything is reachable. A phone on a
  * carrier with no data credit reports online. So this drives a warning banner
- * and never a decision — the sale still gets attempted, and a real failure is
- * caught by the request itself and retried.
+ * and never a decision — the sale is still attempted, and a real failure is
+ * caught by the request itself, where the basket and its idempotency key make
+ * a retry safe.
  *
- * Starts as `true` so the first server render and the first client render
- * agree; the real value arrives in the effect.
+ * Connectivity is an external store, so it is read as one. The server snapshot
+ * is `true`: rendering "you are offline" into HTML that is, by definition,
+ * being delivered over a working connection would be nonsense.
  */
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
 export function useOnlineStatus(): boolean {
-  const [isOnline, setIsOnline] = useState(true);
-
-  useEffect(() => {
-    setIsOnline(navigator.onLine);
-
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
-
-  return isOnline;
+  return useSyncExternalStore(
+    subscribe,
+    () => navigator.onLine,
+    () => true,
+  );
 }

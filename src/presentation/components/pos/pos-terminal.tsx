@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import type { ProductDto } from "@/application/dto/product-dto";
 import type { ActionResult } from "@/application/services/result";
 import type { CompleteSaleResult } from "@/application/use-cases/complete-sale";
@@ -47,11 +47,12 @@ export function PosTerminal({
   const toast = useToast();
   const isOnline = useOnlineStatus();
 
-  const { draft, isRestored, addLine, setQuantity, removeLine, clear } =
-    useCartDraft();
+  const { draft, addLine, setQuantity, removeLine, clear } = useCartDraft();
 
   const [query, setQuery] = useState("");
-  const [products, setProducts] = useState(initialProducts);
+  const [searchResults, setSearchResults] = useState<
+    readonly ProductDto[] | null
+  >(null);
   const [isSearching, startSearch] = useTransition();
 
   const [cartOpen, setCartOpen] = useState(false);
@@ -59,18 +60,31 @@ export function PosTerminal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completed, setCompleted] = useState<CompleteSaleResult | null>(null);
 
-  useEffect(() => {
-    if (!query.trim()) {
-      setProducts(initialProducts);
-      return;
-    }
+  /**
+   * Searching is something the cashier *did*, not state to synchronise, so it
+   * runs from the change handler rather than an effect. The search box already
+   * debounces, so this fires once per pause in typing rather than per key.
+   */
+  const onQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
 
-    startSearch(async () => {
-      const result = await searchProducts(query);
-      if (result.ok) setProducts(result.data);
-      else toast.error(result.message);
-    });
-  }, [query, initialProducts, searchProducts, toast]);
+      if (!value.trim()) {
+        setSearchResults(null);
+        return;
+      }
+
+      startSearch(async () => {
+        const result = await searchProducts(value);
+        if (result.ok) setSearchResults(result.data);
+        else toast.error(result.message);
+      });
+    },
+    [searchProducts, toast],
+  );
+
+  // No query means the server-rendered first page, which is already here.
+  const products = searchResults ?? initialProducts;
 
   // Money, not floats. Same arithmetic as the server, so the number the
   // cashier reads out is the number that gets charged.
@@ -175,7 +189,7 @@ export function PosTerminal({
       <div className="px-4 md:px-6 pb-3">
         <SearchInput
           value={query}
-          onChange={setQuery}
+          onChange={onQueryChange}
           placeholder="Search products by name or SKU"
           label="Search products to sell"
         />
@@ -212,7 +226,7 @@ export function PosTerminal({
 
       {/* The basket bar. Sits above the tab bar on a phone, and is the only
           thing on screen when there is something to sell. */}
-      {isRestored && draft.lines.length > 0 && (
+      {draft.lines.length > 0 && (
         <div className="sticky bottom-16 md:bottom-0 z-20 px-4 md:px-6 pb-3 pt-2 bg-gradient-to-t from-[var(--surface-sunken)] via-[var(--surface-sunken)] to-transparent">
           <Button
             size="lg"

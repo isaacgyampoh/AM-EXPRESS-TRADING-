@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { SaleDto } from "@/application/dto/sale-dto";
 import type { ActionResult } from "@/application/services/result";
@@ -31,20 +31,29 @@ export function VoidSaleControl({
   ) => Promise<ActionResult<SaleDto>>;
 }) {
   const [open, setOpen] = useState(false);
-  const [state, formAction] = useActionState(action, null);
   const toast = useToast();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!state) return;
-    if (state.ok) {
-      toast.success("Sale voided. The stock has been put back.");
-      setOpen(false);
-      router.refresh();
-    } else {
-      toast.error(state.message);
-    }
-  }, [state, toast, router]);
+  // Success handling lives inside the action rather than in an effect watching
+  // its result. An effect would run a render later, which is a visible flicker
+  // on a slow phone — and reacting to a submission is an event, not state to
+  // synchronise.
+  const [state, formAction] = useActionState(
+    async (previous: ActionResult<SaleDto> | null, formData: FormData) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success("Sale voided. The stock has been put back.");
+        setOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
 

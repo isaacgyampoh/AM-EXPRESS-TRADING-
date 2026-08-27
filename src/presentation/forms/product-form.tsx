@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { CategoryDto, ProductDto } from "@/application/dto/product-dto";
 import type { ActionResult } from "@/application/services/result";
@@ -40,25 +40,33 @@ export function ProductForm({
   product?: ProductDto;
   submitLabel: string;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const toast = useToast();
   const router = useRouter();
   const { currencySymbol } = useSettings();
 
   const isEditing = Boolean(product);
+
+  // Handled inside the action rather than in an effect watching its result:
+  // navigating a render later shows the old form for a beat, which on a slow
+  // connection reads as the save having failed.
+  const [state, formAction] = useActionState(
+    async (previous: ActionResult<ProductDto> | null, formData: FormData) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success(isEditing ? "Product updated." : "Product added.");
+        router.push(`/products/${result.data.id}`);
+        router.refresh();
+      } else if (!result.fieldErrors) {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
+
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
-
-  useEffect(() => {
-    if (!state) return;
-
-    if (state.ok) {
-      toast.success(isEditing ? "Product updated." : "Product added.");
-      router.push(`/products/${state.data.id}`);
-      router.refresh();
-    } else if (!state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, toast, router, isEditing]);
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>

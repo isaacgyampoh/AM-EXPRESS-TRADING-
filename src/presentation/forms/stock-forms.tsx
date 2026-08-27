@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionResult } from "@/application/services/result";
 import type { StockLevelDto } from "@/application/use-cases/manage-stock";
@@ -100,20 +100,25 @@ function AddStockForm({
   action: StockAction;
   onDone: () => void;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const toast = useToast();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!state) return;
-    if (state.ok) {
-      toast.success(`Stock is now ${state.data.quantityOnHand}.`);
-      onDone();
-      router.refresh();
-    } else if (!state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, toast, onDone, router]);
+  const [state, formAction] = useActionState(
+    async (previous: ActionResult<StockLevelDto> | null, formData: FormData) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success(`Stock is now ${result.data.quantityOnHand}.`);
+        onDone();
+        router.refresh();
+      } else if (!result.fieldErrors) {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
 
@@ -155,20 +160,25 @@ function AdjustStockForm({
   action: StockAction;
   onDone: () => void;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const toast = useToast();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!state) return;
-    if (state.ok) {
-      toast.success(`Stock corrected to ${state.data.quantityOnHand}.`);
-      onDone();
-      router.refresh();
-    } else if (!state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, toast, onDone, router]);
+  const [state, formAction] = useActionState(
+    async (previous: ActionResult<StockLevelDto> | null, formData: FormData) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success(`Stock corrected to ${result.data.quantityOnHand}.`);
+        onDone();
+        router.refresh();
+      } else if (!result.fieldErrors) {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
 

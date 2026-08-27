@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionResult } from "@/application/services/result";
 import type {
@@ -92,21 +92,26 @@ function ExpenseForm({
   action: ExpenseAction;
   onDone: () => void;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const { currencySymbol } = useSettings();
   const toast = useToast();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!state) return;
-    if (state.ok) {
-      toast.success("Expense recorded.");
-      onDone();
-      router.refresh();
-    } else if (!state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, toast, onDone, router]);
+  const [state, formAction] = useActionState(
+    async (previous: ActionResult<ExpenseDto> | null, formData: FormData) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success("Expense recorded.");
+        onDone();
+        router.refresh();
+      } else if (!result.fieldErrors) {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
 
@@ -183,20 +188,28 @@ function CategoryForm({
   action: CategoryAction;
   onDone: () => void;
 }) {
-  const [state, formAction] = useActionState(action, null);
   const toast = useToast();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!state) return;
-    if (state.ok) {
-      toast.success("Category added.");
-      onDone();
-      router.refresh();
-    } else if (!state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, toast, onDone, router]);
+  const [state, formAction] = useActionState(
+    async (
+      previous: ActionResult<ExpenseCategoryDto> | null,
+      formData: FormData,
+    ) => {
+      const result = await action(previous, formData);
+
+      if (result.ok) {
+        toast.success("Category added.");
+        onDone();
+        router.refresh();
+      } else if (!result.fieldErrors) {
+        toast.error(result.message);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
 
