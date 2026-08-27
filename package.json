@@ -15,17 +15,20 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --linked > src/infrastructure/supabase/database.types.ts",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run db:test",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run db:test && npm run build && npm run check:secrets",
     "test:architecture": "vitest run src/tests/architecture",
-    "db:test": "bash scripts/db-test.sh"
+    "db:test": "bash scripts/db-test.sh",
+    "check:secrets": "bash scripts/check-bundle-secrets.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
+    "clsx": "^2.1.1",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -38,6 +41,7 @@
     "eslint-config-next": "16.3.3",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-boundaries": "^7.2.0",
+    "playwright": "^1.62.1",
     "supabase": "^2.116.0",
     "tailwindcss": "^4",
     "typescript": "^5",

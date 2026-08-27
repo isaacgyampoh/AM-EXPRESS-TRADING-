@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AM Express Trading
 
-## Getting Started
+Inventory, point of sale, expenses, staff and reporting for AM Express Trading.
 
-First, run the development server:
+Next.js (App Router) · TypeScript · Supabase (PostgreSQL, Auth, RLS) · Vercel · PWA
+
+---
+
+## What this is
+
+A business system for a real shop, built so that the business logic is
+separable from the framework it happens to run on. The core idea running
+through every decision:
+
+**The database is the store of record, not the browser.** Prices, totals,
+stock levels, roles and cashier identity are all read and enforced server-side.
+The client sends intent — which products, how many, how much cash — and never
+anything the business would be embarrassed to have forged.
+
+## Getting started
 
 ```bash
+npm install
+cp .env.example .env.local     # then fill in your Supabase values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+You will need a Supabase project. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+for creating one, applying the migrations, and promoting the first
+administrator.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run typecheck` | TypeScript, no emit |
+| `npm run lint` | ESLint, including the architecture boundary rules |
+| `npm test` | Domain, application and architecture tests (fast, no database) |
+| `npm run db:test` | Applies every migration to a throwaway PostgreSQL and runs the RLS, atomicity and payment-rule assertions |
+| `npm run check:secrets` | Fails if a privileged key reached the client bundle |
+| `npm run verify` | All of the above, in order |
+| `npm run db:push` | Applies migrations to the linked Supabase project |
+| `npm run db:types` | Regenerates `database.types.ts` from the linked schema |
 
-## Learn More
+`npm run db:test` needs a local PostgreSQL 14+ (the `initdb` and `pg_ctl`
+binaries). It never touches a Supabase project.
 
-To learn more about Next.js, take a look at the following resources:
+## Layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── domain/          business rules — no React, no Next, no Supabase, no npm at all
+├── application/     use cases, validators, DTOs
+├── infrastructure/  Supabase clients, repositories, mappers, auth, composition root
+├── presentation/    components and forms
+├── app/             routes, server actions
+├── lib/             pure helpers and configuration
+└── tests/           domain, application and architecture suites
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+supabase/
+├── migrations/      sequential SQL — the only way the schema changes
+├── tests/           RLS, atomicity and payment-rule assertions
+└── seed.sql         starter expense categories, and how to make the first admin
+```
 
-## Deploy on Vercel
+The dependency direction is enforced by ESLint, not by convention:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+Presentation ──▶ Application ──▶ Domain ◀── Infrastructure
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`src/tests/architecture` writes files that deliberately break those rules and
+fails if the linter does *not* complain — because a boundary rule that silently
+stops matching is worse than no rule at all.
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layers, and why each rule exists
+- [docs/SECURITY.md](docs/SECURITY.md) — what is enforced, where, and what an attacker cannot do
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Supabase and Vercel, step by step

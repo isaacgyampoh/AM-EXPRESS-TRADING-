@@ -2,6 +2,8 @@ import "server-only";
 
 import { CompleteSale } from "@/application/use-cases/complete-sale";
 import { CreateProduct } from "@/application/use-cases/create-product";
+import { GetProduct } from "@/application/use-cases/get-product";
+import { GetStockOverview } from "@/application/use-cases/get-stock-overview";
 import { ListCategories, ListProducts } from "@/application/use-cases/list-products";
 import { AddStock, AdjustStock } from "@/application/use-cases/manage-stock";
 import { UpdateProduct } from "@/application/use-cases/update-product";
@@ -57,8 +59,13 @@ export async function privilegedRepositories() {
   };
 }
 
-/** Use cases, wired to this request's repositories. */
-export async function useCases() {
+/**
+ * Use cases, wired to this request's repositories.
+ *
+ * Named getUseCases rather than useCases because a `use` prefix makes every
+ * linter and every reader think "React hook", and this is neither.
+ */
+export async function getUseCases() {
   const repos = await repositories();
 
   return {
@@ -78,6 +85,8 @@ export async function useCases() {
       repos.categories,
     ),
     listCategories: new ListCategories(repos.categories),
+    getProduct: new GetProduct(repos.products, repos.inventory, repos.categories),
+    getStockOverview: new GetStockOverview(repos.products, repos.inventory),
     addStock: new AddStock(repos.inventory, repos.products),
     adjustStock: new AdjustStock(repos.inventory, repos.products),
     completeSale: new CompleteSale(

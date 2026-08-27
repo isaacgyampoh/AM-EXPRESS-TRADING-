@@ -4,6 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Session refresh and the first line of route protection.
  *
+ * This is Next.js 16's `proxy` convention — the file that used to be called
+ * `middleware.ts`. Same job, same edge runtime.
+ *
  * Two jobs, in this order:
  *
  *   1. Refresh the Supabase session cookie. Server components cannot set
@@ -21,7 +24,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const PUBLIC_PATHS = ["/login", "/auth"];
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -47,9 +50,19 @@ export async function middleware(request: NextRequest) {
 
   // Verifies the token with Supabase rather than trusting the cookie, and
   // refreshes it if needed. Must not be skipped or reordered.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // Wrapped because this is a network call on every request: if Supabase is
+  // unreachable, an unhandled rejection here turns a temporary outage into a
+  // 500 on every page including the sign-in screen. Treating a failure as
+  // "not signed in" degrades to a login page, which is both safe and
+  // recoverable — nothing is granted on the strength of an error.
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    user = null;
+  }
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some(
