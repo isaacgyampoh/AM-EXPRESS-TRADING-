@@ -25,7 +25,7 @@ class FakePinAuthRepository implements PinAuthRepository {
     this.attempts.push({ ip, staffId, succeeded });
   }
 
-  async recentFailedAttempts(ip: string, _windowSeconds: number): Promise<number> {
+  async recentFailedAttempts(ip: string): Promise<number> {
     return this.attempts.filter((a) => a.ip === ip && !a.succeeded).length;
   }
 
