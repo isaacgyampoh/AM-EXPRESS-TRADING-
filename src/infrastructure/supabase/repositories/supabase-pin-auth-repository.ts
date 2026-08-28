@@ -111,36 +111,54 @@ export class SupabasePinAuthRepository implements PinAuthRepository {
    *   is already established and the user is logged in.
    */
   async establishSession(staffId: string, email: string): Promise<void> {
+    const tag = `[establishSession:${staffId.slice(0, 8)}]`;
+
     // --- Step 1: set a disposable password ---
     const disposable = randomBytes(32).toString("hex"); // 64 hex chars
 
+    console.log(`${tag} step 1 — updateUserById (set disposable password)`);
     const { error: setError } = await this.privileged.auth.admin.updateUserById(
       staffId,
       { password: disposable },
     );
     if (setError) {
+      console.error(`${tag} step 1 FAILED:`, setError.message);
       throw new Error(`Session setup failed (set): ${setError.message}`);
     }
+    console.log(`${tag} step 1 OK`);
 
     // --- Step 2: sign in with the disposable password ---
-    const { error: signInError } = await this.ssr.auth.signInWithPassword({
-      email,
-      password: disposable,
-    });
+    console.log(`${tag} step 2 — signInWithPassword`);
+    const { data: signInData, error: signInError } =
+      await this.ssr.auth.signInWithPassword({
+        email,
+        password: disposable,
+      });
     if (signInError) {
+      console.error(`${tag} step 2 FAILED:`, signInError.message, signInError.status);
       throw new Error(`Session setup failed (sign-in): ${signInError.message}`);
     }
+    console.log(
+      `${tag} step 2 OK — hasSession:${!!signInData?.session} userId:${signInData?.session?.user?.id ?? "none"}`,
+    );
 
-    // --- Step 3: rotate to a fresh random password (invalidate the disposable) ---
+    // --- Step 3: verify session in SSR client storage ---
+    const { data: sessionCheck } = await this.ssr.auth.getSession();
+    console.log(
+      `${tag} step 3 — session in SSR store: hasSession:${!!sessionCheck?.session}`,
+    );
+
+    // --- Step 4: rotate to a fresh random password (invalidate the disposable) ---
     // Non-fatal: the session is live. A failure here is a minor security
     // hygiene issue (the disposable stays valid until the next login) but it
     // cannot be exploited without knowing the internal email, which is an
     // implementation detail never shown to users.
     await this.privileged.auth.admin
       .updateUserById(staffId, { password: randomBytes(32).toString("hex") })
-      .catch(() => {
-        /* intentionally swallowed */
+      .catch((err: unknown) => {
+        console.warn(`${tag} step 4 (rotate password) failed (non-fatal):`, err);
       });
+    console.log(`${tag} complete`);
   }
 
   async updatePinHash(staffId: string, newPinHash: string): Promise<void> {
