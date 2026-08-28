@@ -17,7 +17,13 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z
     .string()
     .min(20, "NEXT_PUBLIC_SUPABASE_ANON_KEY looks wrong or is missing"),
-  NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
+  // Empty-string guard: Vercel sets this to "" when the variable is saved with
+  // no value, which fails url() even though the field is optional. We treat
+  // blank as "not set" and fall through to the VERCEL_URL fallback in siteUrl().
+  NEXT_PUBLIC_SITE_URL: z
+    .string()
+    .transform((v) => (v.trim() === "" ? undefined : v))
+    .pipe(z.string().url().optional()),
 });
 
 /**
