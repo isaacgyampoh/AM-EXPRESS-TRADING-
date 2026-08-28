@@ -44,6 +44,9 @@ export async function signIn(
     if (err instanceof ValidationError) {
       return failure("SIGN_IN_FAILED", err.message);
     }
+    // Log the real error server-side so it appears in Vercel runtime logs.
+    // Never expose internal details to the client.
+    console.error("[signIn] Unexpected error during PIN login:", err);
     return failure("SIGN_IN_FAILED", "Invalid PIN.");
   }
 
