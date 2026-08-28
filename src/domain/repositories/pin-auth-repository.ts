@@ -26,9 +26,9 @@ export interface PinAuthRepository {
   /**
    * Records a single PIN attempt (success or failure) for rate-limiting.
    *
-   * @param ip   Requester's IP address.
+   * @param ip       Requester's IP address.
    * @param staffId  Matched staff ID for successful attempts; null for failures.
-   * @param succeeded  Whether the attempt was successful.
+   * @param succeeded Whether the attempt was successful.
    */
   recordAttempt(
     ip: string,
@@ -43,21 +43,28 @@ export interface PinAuthRepository {
   recentFailedAttempts(ip: string, windowSeconds: number): Promise<number>;
 
   /**
-   * Establishes a Supabase Auth session for the given internal email address.
+   * Establishes a Supabase Auth session for the matched staff member.
    *
-   * Internally generates a short-lived magic-link token via the admin API and
-   * immediately exchanges it server-side.  The session cookies are written to
-   * the response by the SSR client's cookie handler.
+   * The implementation uses a disposable-password handshake:
+   *   1. Admin API sets a fresh random password on the user's auth record.
+   *   2. SSR client signs in with that password (writes session cookies).
+   *   3. Admin API immediately rotates the password again so the disposable
+   *      value cannot be reused.
    *
-   * Throws on failure so the caller can treat it as a hard error.
+   * This avoids the deprecated `type: "magiclink"` OTP flow and works with
+   * any Supabase project configuration.
+   *
+   * @param staffId  Auth user ID — needed for admin.updateUserById.
+   * @param email    Internal email address stored on the profiles row.
    */
-  establishSession(email: string): Promise<void>;
+  establishSession(staffId: string, email: string): Promise<void>;
 
   /**
-   * Updates `pin_hash` for a given staff member (admin-only path).
+   * Updates `pin_hash` for a given staff member.
    *
-   * Used when an admin resets another staff member's PIN.  Uses the privileged
-   * client because RLS only allows admins to update profiles.
+   * Uses the privileged client because the change-PIN path runs server-side
+   * under `import "server-only"`, and the application layer has already
+   * verified the current PIN before calling this.
    */
   updatePinHash(staffId: string, newPinHash: string): Promise<void>;
 }

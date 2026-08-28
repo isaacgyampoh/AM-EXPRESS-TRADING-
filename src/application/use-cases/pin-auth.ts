@@ -61,7 +61,7 @@ export class LoginWithPin {
 
     // 4. Record success and establish Supabase Auth session.
     await this.pinAuth.recordAttempt(ip, matched.cred.staffId, true);
-    await this.pinAuth.establishSession(matched.cred.email);
+    await this.pinAuth.establishSession(matched.cred.staffId, matched.cred.email);
   }
 }
 

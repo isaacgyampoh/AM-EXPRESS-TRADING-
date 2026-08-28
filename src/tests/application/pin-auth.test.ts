@@ -29,7 +29,8 @@ class FakePinAuthRepository implements PinAuthRepository {
     return this.attempts.filter((a) => a.ip === ip && !a.succeeded).length;
   }
 
-  async establishSession(email: string): Promise<void> {
+  async establishSession(staffId: string, email: string): Promise<void> {
+    void staffId; // used in production to call updateUserById; fake ignores it
     this.sessionEstablished.push(email);
   }
 

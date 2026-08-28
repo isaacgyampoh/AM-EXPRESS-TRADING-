@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PinAuthRepository, PinCredential } from "@/domain/repositories/pin-auth-repository";
 import type { Database } from "../database.types";
@@ -12,10 +13,20 @@ type Client = SupabaseClient<Database>;
  * ALL reads/writes here use the service-role (privileged) client because:
  *   - `listActiveCredentials` is called before any session exists (no RLS).
  *   - `pin_attempts` has no authenticated policies (see migration).
- *   - `updatePinHash` (admin reset path) needs to touch any profile row.
+ *   - `updatePinHash` needs to touch any profile row as an admin operation.
  *
  * The SSR client is used only for `establishSession`, where it is needed to
- * write the resulting cookies back into the response.
+ * write the resulting session cookies back into the Next.js response.
+ *
+ * Session establishment uses a disposable-password handshake:
+ *   1. Admin API sets a random 64-hex-char password on the user.
+ *   2. SSR client calls signInWithPassword — this is the battle-tested path
+ *      that properly writes session cookies via the @supabase/ssr setAll hook.
+ *   3. Admin API immediately rotates the password to a second random value so
+ *      the disposable value used in step 2 cannot be reused.
+ *
+ * This replaces the deprecated `type: "magiclink"` OTP flow which was removed
+ * in recent Supabase auth server versions.
  */
 export class SupabasePinAuthRepository implements PinAuthRepository {
   constructor(
@@ -81,31 +92,55 @@ export class SupabasePinAuthRepository implements PinAuthRepository {
     return count ?? 0;
   }
 
-  async establishSession(email: string): Promise<void> {
-    // Generate a short-lived magic-link token using the admin API.
-    // No email is sent — we consume the token immediately server-side.
-    const { data: linkData, error: linkError } =
-      await this.privileged.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
+  /**
+   * Establishes a session for `staffId` using the disposable-password handshake.
+   *
+   * Step 1 — set disposable password:
+   *   The admin client updates the user's auth.users record with a fresh random
+   *   password.  This password is never stored anywhere — it exists only in this
+   *   function call's stack frame.
+   *
+   * Step 2 — sign in:
+   *   The SSR client calls signInWithPassword.  On success the @supabase/ssr
+   *   setAll cookie handler writes the JWT session cookies into the Next.js
+   *   response, so the browser gets them on the server-action redirect.
+   *
+   * Step 3 — rotate password immediately:
+   *   The admin client sets another random password, making the disposable value
+   *   from step 1 permanently invalid.  Errors here are non-fatal; the session
+   *   is already established and the user is logged in.
+   */
+  async establishSession(staffId: string, email: string): Promise<void> {
+    // --- Step 1: set a disposable password ---
+    const disposable = randomBytes(32).toString("hex"); // 64 hex chars
 
-    if (linkError || !linkData?.properties?.hashed_token) {
-      throw new Error(
-        `Failed to generate session link: ${linkError?.message ?? "no token returned"}`,
-      );
+    const { error: setError } = await this.privileged.auth.admin.updateUserById(
+      staffId,
+      { password: disposable },
+    );
+    if (setError) {
+      throw new Error(`Session setup failed (set): ${setError.message}`);
     }
 
-    // Exchange the hashed token for a session.  The SSR client's setAll
-    // cookie handler writes the JWT cookies into the Next.js response.
-    const { error: otpError } = await this.ssr.auth.verifyOtp({
-      token_hash: linkData.properties.hashed_token,
-      type: "magiclink",
+    // --- Step 2: sign in with the disposable password ---
+    const { error: signInError } = await this.ssr.auth.signInWithPassword({
+      email,
+      password: disposable,
     });
-
-    if (otpError) {
-      throw new Error(`Failed to establish session: ${otpError.message}`);
+    if (signInError) {
+      throw new Error(`Session setup failed (sign-in): ${signInError.message}`);
     }
+
+    // --- Step 3: rotate to a fresh random password (invalidate the disposable) ---
+    // Non-fatal: the session is live. A failure here is a minor security
+    // hygiene issue (the disposable stays valid until the next login) but it
+    // cannot be exploited without knowing the internal email, which is an
+    // implementation detail never shown to users.
+    await this.privileged.auth.admin
+      .updateUserById(staffId, { password: randomBytes(32).toString("hex") })
+      .catch(() => {
+        /* intentionally swallowed */
+      });
   }
 
   async updatePinHash(staffId: string, newPinHash: string): Promise<void> {
