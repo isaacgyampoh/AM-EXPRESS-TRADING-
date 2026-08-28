@@ -6,8 +6,10 @@ import { PageHeader } from "@/presentation/components/app-shell";
 import { linkButtonClasses } from "@/presentation/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/presentation/components/ui/card";
 import { ErrorState } from "@/presentation/components/ui/states";
+import { ChangePinForm } from "@/presentation/forms/change-pin-form";
 import { SettingsForm } from "@/presentation/forms/settings-form";
 import { updateSettingsAction } from "./actions";
+import { changePinAction } from "./pin-actions";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -51,6 +53,16 @@ export default async function SettingsPage() {
           />
           <CardBody>
             <SettingsForm settings={settings} action={updateSettingsAction} />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Change your PIN"
+            description="Your 4-digit PIN is what you use to sign in. Keep it private."
+          />
+          <CardBody>
+            <ChangePinForm action={changePinAction} />
           </CardBody>
         </Card>
 

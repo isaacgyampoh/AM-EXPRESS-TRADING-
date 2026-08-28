@@ -48,6 +48,7 @@ export interface Database {
           email: string;
           role: string;
           is_active: boolean;
+          pin_hash: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -57,8 +58,14 @@ export interface Database {
           email: string;
           role?: string;
           is_active?: boolean;
+          pin_hash?: string | null;
         };
-        Update: { full_name?: string; role?: string; is_active?: boolean };
+        Update: {
+          full_name?: string;
+          role?: string;
+          is_active?: boolean;
+          pin_hash?: string | null;
+        };
         Relationships: [
           {
             foreignKeyName: "profiles_role_fkey";
@@ -66,6 +73,33 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "roles";
             referencedColumns: ["name"];
+          },
+        ];
+      };
+
+      pin_attempts: {
+        Row: {
+          id: string;
+          ip_address: string | null;
+          staff_id: string | null;
+          attempted_at: string;
+          succeeded: boolean;
+        };
+        Insert: {
+          id?: string;
+          ip_address?: string | null;
+          staff_id?: string | null;
+          attempted_at?: string;
+          succeeded: boolean;
+        };
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "pin_attempts_staff_id_fkey";
+            columns: ["staff_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };

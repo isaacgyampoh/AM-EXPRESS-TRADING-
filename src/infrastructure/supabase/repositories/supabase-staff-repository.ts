@@ -1,7 +1,9 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StaffId } from "@/domain/entities/identifiers";
 import { Staff } from "@/domain/entities/staff";
-import { ConflictError, NotFoundError, ValidationError } from "@/domain/errors/domain-error";
+import { NotFoundError, ValidationError } from "@/domain/errors/domain-error";
 import type { NewStaff, StaffRepository } from "@/domain/repositories/staff-repository";
 import type { Role } from "@/domain/value-objects/role";
 import type { Database } from "../database.types";
@@ -18,9 +20,10 @@ type Client = SupabaseClient<Database>;
  * API will not create a user for an ordinary session — so it takes a second,
  * privileged client which the composition root only supplies on the server.
  *
- * That privileged client is used for exactly one call: creating the auth
- * identity. The role is then set through the normal RLS-governed path, so an
- * admin cannot use this route to do anything they could not otherwise do.
+ * Staff members no longer have user-visible email addresses or passwords.
+ * Instead, each account gets an internal email (`uuid@pos.amexpress.internal`)
+ * and a random internal password — both generated here and never returned.
+ * The 4-digit PIN is hashed with bcrypt before being written to `pin_hash`.
  */
 export class SupabaseStaffRepository implements StaffRepository {
   constructor(
@@ -71,23 +74,22 @@ export class SupabaseStaffRepository implements StaffRepository {
       );
     }
 
-    const email = staff.email.trim().toLowerCase();
+    // Generate internal credentials — these are never shown to the user.
+    const internalEmail = `${randomUUID()}@pos.amexpress.internal`;
+    const internalPassword = randomBytes(32).toString("hex");
+
+    // Hash the PIN before storing it.
+    const pinHash = await bcrypt.hash(staff.pin, 12);
 
     const { data: created, error: authError } =
       await this.privilegedClient.auth.admin.createUser({
-        email,
-        password: staff.initialPassword,
+        email: internalEmail,
+        password: internalPassword,
         email_confirm: true,
         user_metadata: { full_name: staff.fullName.trim() },
       });
 
     if (authError) {
-      // Supabase reports a duplicate address as a 422 with this wording.
-      if (/already been registered|already exists/i.test(authError.message)) {
-        throw new ConflictError(
-          "Someone already has an account with that email address.",
-        );
-      }
       throw new ValidationError(authError.message);
     }
 
@@ -102,7 +104,11 @@ export class SupabaseStaffRepository implements StaffRepository {
     // genuinely be an admin for this to succeed.
     const { data, error } = await this.client
       .from("profiles")
-      .update({ full_name: staff.fullName.trim(), role: staff.role.name })
+      .update({
+        full_name: staff.fullName.trim(),
+        role: staff.role.name,
+        pin_hash: pinHash,
+      })
       .eq("id", id)
       .select("*")
       .maybeSingle();

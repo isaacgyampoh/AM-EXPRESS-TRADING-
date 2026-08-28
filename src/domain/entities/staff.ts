@@ -7,6 +7,11 @@ export interface StaffProps {
   /** Same value as the Supabase auth user id. One person, one identity. */
   readonly id: StaffId;
   readonly fullName: string;
+  /**
+   * Internal email — used by the PIN auth bridge to establish a Supabase Auth
+   * session.  Never displayed in the UI.  May be a system address like
+   * `uuid@pos.amexpress.internal`.
+   */
   readonly email: string;
   readonly role: Role;
   readonly isActive: boolean;
@@ -36,8 +41,10 @@ export class Staff {
     if (fullName.length > 120) {
       throw new ValidationError("A name can be at most 120 characters.");
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new ValidationError("Enter a valid email address.", { email });
+    // Email is an internal implementation detail (e.g. uuid@pos.amexpress.internal).
+    // Basic presence check only — format is enforced by the infrastructure layer.
+    if (!email.includes("@")) {
+      throw new ValidationError("Internal email is malformed.", { email });
     }
 
     return new Staff({ ...props, fullName, email });

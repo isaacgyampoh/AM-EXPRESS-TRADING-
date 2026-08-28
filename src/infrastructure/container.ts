@@ -30,6 +30,7 @@ import {
   UpdateBusinessSettings,
 } from "@/application/use-cases/manage-settings";
 import { AddStock, AdjustStock } from "@/application/use-cases/manage-stock";
+import { ChangeOwnPin, LoginWithPin } from "@/application/use-cases/pin-auth";
 import { UpdateProduct } from "@/application/use-cases/update-product";
 import {
   GenerateReceipt,
@@ -41,6 +42,7 @@ import { adminSupabase } from "./supabase/client/admin-client";
 import { serverSupabase } from "./supabase/client/server-client";
 import { SupabaseExpenseRepository } from "./supabase/repositories/supabase-expense-repository";
 import { SupabaseInventoryRepository } from "./supabase/repositories/supabase-inventory-repository";
+import { SupabasePinAuthRepository } from "./supabase/repositories/supabase-pin-auth-repository";
 import {
   SupabaseCategoryRepository,
   SupabaseProductRepository,
@@ -90,6 +92,17 @@ export async function privilegedRepositories() {
   const client = await serverSupabase();
   return {
     staff: new SupabaseStaffRepository(client, adminSupabase()),
+  };
+}
+
+/**
+ * PIN auth repository — requires both the privileged client (for pre-session
+ * reads and attempt recording) and the SSR client (to write session cookies).
+ */
+export async function pinAuthRepositories() {
+  const client = await serverSupabase();
+  return {
+    pinAuth: new SupabasePinAuthRepository(adminSupabase(), client),
   };
 }
 
@@ -171,5 +184,19 @@ export async function getPrivilegedUseCases() {
   const repos = await privilegedRepositories();
   return {
     createStaff: new CreateStaff(repos.staff),
+  };
+}
+
+/**
+ * PIN authentication use cases.
+ *
+ * Used by the login server action (no session) and the change-PIN server
+ * action (authenticated session).
+ */
+export async function getPinUseCases() {
+  const repos = await pinAuthRepositories();
+  return {
+    loginWithPin: new LoginWithPin(repos.pinAuth),
+    changeOwnPin: new ChangeOwnPin(repos.pinAuth),
   };
 }

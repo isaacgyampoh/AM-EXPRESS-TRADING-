@@ -4,13 +4,12 @@ import type { Role } from "../value-objects/role";
 
 export interface NewStaff {
   readonly fullName: string;
-  readonly email: string;
   readonly role: Role;
   /**
-   * Initial password. Passed straight to the auth provider and never stored,
-   * logged or returned. The staff member changes it on first sign-in.
+   * 4-digit PIN.  Passed to the hashing layer in the infrastructure; never
+   * stored in plaintext, never logged, never returned.
    */
-  readonly initialPassword: string;
+  readonly pin: string;
 }
 
 export interface StaffRepository {
@@ -21,9 +20,10 @@ export interface StaffRepository {
   /**
    * Creates the auth identity and the staff profile together.
    *
+   * Generates an internal email and a random internal password server-side.
+   * The PIN is hashed with bcrypt before being stored in `profiles.pin_hash`.
    * This is the one operation that legitimately needs elevated privileges, so
-   * the implementation is server-only and guarded. Everything else in the
-   * system runs as the signed-in user under RLS.
+   * the implementation is server-only and guarded.
    */
   create(staff: NewStaff): Promise<Staff>;
 

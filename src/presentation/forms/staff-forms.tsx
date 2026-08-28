@@ -18,10 +18,9 @@ type StaffAction = (
 /**
  * Adding a staff member.
  *
- * The manager sets an initial password and passes it on however they normally
- * would. No invitation email, because this is a shop where the owner and the
- * cashier are standing in the same room — and an email flow that depends on a
- * cashier having an inbox they check is a flow that strands people.
+ * Collects a name, a role, and a 4-digit PIN.  The PIN is set by the manager
+ * and handed to the new staff member verbally — there is no email involved.
+ * Accounts are active straight away.
  */
 export function AddStaffControl({ action }: { action: StaffAction }) {
   const [open, setOpen] = useState(false);
@@ -64,8 +63,7 @@ export function AddStaffControl({ action }: { action: StaffAction }) {
             {createdFor}&rsquo;s account is ready.
           </p>
           <p className="mt-1 text-brand-800 dark:text-brand-300">
-            Give them the password you set. They should change it once they are
-            signed in.
+            Give them their PIN so they can sign in.
           </p>
         </div>
       )}
@@ -74,7 +72,7 @@ export function AddStaffControl({ action }: { action: StaffAction }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Add a staff member"
-        description="They will be able to sign in straight away."
+        description="Set a 4-digit PIN they will use to sign in."
       >
         <form action={formAction} className="flex flex-col gap-4 pt-1" noValidate>
           <TextInput
@@ -85,20 +83,6 @@ export function AddStaffControl({ action }: { action: StaffAction }) {
             autoComplete="off"
             placeholder="Kofi Boateng"
             error={fieldErrors?.fullName}
-          />
-
-          <TextInput
-            label="Email"
-            name="email"
-            type="email"
-            inputMode="email"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            required
-            autoComplete="off"
-            hint="What they will sign in with."
-            error={fieldErrors?.email}
           />
 
           <Select
@@ -117,14 +101,28 @@ export function AddStaffControl({ action }: { action: StaffAction }) {
           />
 
           <TextInput
-            label="Starting password"
-            name="initialPassword"
+            label="PIN"
+            name="pin"
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]{4}"
+            maxLength={4}
             required
             autoComplete="off"
-            spellCheck={false}
-            hint="At least 12 characters. Shown as you type so you can read it out — they change it after signing in."
-            error={fieldErrors?.initialPassword}
+            hint="4 digits. They can change it after signing in."
+            error={fieldErrors?.pin}
+          />
+
+          <TextInput
+            label="Confirm PIN"
+            name="confirmPin"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]{4}"
+            maxLength={4}
+            required
+            autoComplete="off"
+            error={fieldErrors?.confirmPin}
           />
 
           <PendingButton label="Create account" pendingLabel="Creating…" />

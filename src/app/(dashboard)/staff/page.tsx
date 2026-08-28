@@ -78,9 +78,6 @@ export default async function StaffPage() {
                         </span>
                       )}
                     </p>
-                    <p className="text-sm text-[var(--text-muted)] mt-0.5 break-all">
-                      {member.email}
-                    </p>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
                       Added {formatDate(member.createdAt)}
                     </p>

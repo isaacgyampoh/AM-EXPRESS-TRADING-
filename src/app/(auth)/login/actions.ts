@@ -1,89 +1,68 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import type { ActionResult } from "@/application/services/result";
 import { failure } from "@/application/services/result";
+import { ValidationError } from "@/domain/errors/domain-error";
+import { getPinUseCases } from "@/infrastructure/container";
 import { serverSupabase } from "@/infrastructure/supabase/client/server-client";
 
-const signInSchema = z.object({
-  email: z.email("Enter your email address"),
-  password: z.string().min(1, "Enter your password"),
-  next: z.string().optional(),
-});
-
 /**
- * Signs a staff member in.
+ * Signs a staff member in with a 4-digit PIN.
  *
- * Runs as a server action so the session cookie is set by the server. The
- * browser never handles a token.
+ * The PIN is compared server-side against the bcrypt hashes of all active
+ * staff members.  On a match, a Supabase Auth session is established via a
+ * short-lived magic-link token that is generated and consumed entirely here —
+ * the browser never sees a token, an email, or a password.
  *
- * Failures are deliberately vague: "Those details are not right" covers a
- * wrong password, an unknown address and a typo alike. Distinguishing them
- * would tell whoever is guessing which addresses have accounts.
+ * Failures are deliberately generic.  A wrong PIN, an unknown PIN, a
+ * deactivated account, and a malformed input all return "Invalid PIN."
+ * Distinguishing them would help an attacker enumerate accounts.
  *
- * A deactivated account is the one case worth naming, because that person is
- * not an attacker — they are a former cashier wondering why their password
- * stopped working, and their manager needs to hear the real reason.
+ * Rate limiting: 10 failed attempts per IP per 15 minutes → 15-minute block.
  */
 export async function signIn(
   _previous: ActionResult<null> | null,
   formData: FormData,
 ): Promise<ActionResult<null>> {
-  const parsed = signInSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-    next: formData.get("next") ?? undefined,
-  });
+  // Resolve the IP address for rate limiting.
+  const headersList = await headers();
+  const ip =
+    headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headersList.get("x-real-ip") ??
+    "0.0.0.0";
 
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = issue.path.join(".") || "form";
-      fieldErrors[key] ??= issue.message;
+  const pin = formData.get("pin");
+  const next = formData.get("next");
+
+  const { loginWithPin } = await getPinUseCases();
+
+  try {
+    await loginWithPin.execute(ip, { pin });
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return failure("SIGN_IN_FAILED", err.message);
     }
-    return failure("VALIDATION_ERROR", "Check your details and try again.", {
-      fieldErrors,
-    });
+    return failure("SIGN_IN_FAILED", "Invalid PIN.");
   }
 
-  const supabase = await serverSupabase();
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email.trim().toLowerCase(),
-    password: parsed.data.password,
-  });
-
-  if (error || !data.user) {
-    return failure(
-      "SIGN_IN_FAILED",
-      "Those details are not right. Check your email and password.",
-    );
-  }
-
-  // A deactivated staff member has valid credentials but no access. Signing
-  // them out immediately keeps the "is_active" check in one place — the
-  // database — rather than relying on every page to notice.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_active")
-    .eq("id", data.user.id)
-    .maybeSingle();
-
-  if (!profile?.is_active) {
-    await supabase.auth.signOut();
-    return failure(
-      "INACTIVE_STAFF",
-      "This account has been deactivated. Ask an administrator to reactivate it.",
-    );
-  }
-
-  // Only follow a relative path. An open redirect here would turn the sign-in
-  // page into a way to send staff to somebody else's site with the business's
-  // own link.
-  const next = parsed.data.next;
+  // Only follow a relative path to prevent open redirects.
   const destination =
-    next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    typeof next === "string" &&
+    next.startsWith("/") &&
+    !next.startsWith("//")
+      ? next
+      : "/dashboard";
 
   redirect(destination);
+}
+
+/**
+ * Signs the current staff member out and redirects to the login page.
+ */
+export async function signOut(): Promise<void> {
+  const supabase = await serverSupabase();
+  await supabase.auth.signOut();
+  redirect("/login");
 }

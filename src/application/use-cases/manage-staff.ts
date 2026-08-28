@@ -1,6 +1,6 @@
 import { asStaffId } from "@/domain/entities/identifiers";
 import type { Staff } from "@/domain/entities/staff";
-import { ConflictError, ForbiddenError, ValidationError } from "@/domain/errors/domain-error";
+import { ForbiddenError, ValidationError } from "@/domain/errors/domain-error";
 import type { StaffRepository } from "@/domain/repositories/staff-repository";
 import { Role } from "@/domain/value-objects/role";
 import { parseOrThrow } from "../validators/product-validators";
@@ -13,7 +13,6 @@ import {
 export interface StaffDto {
   readonly id: string;
   readonly fullName: string;
-  readonly email: string;
   readonly role: "admin" | "cashier";
   readonly isActive: boolean;
   readonly createdAt: string;
@@ -25,7 +24,6 @@ function toStaffDto(staff: Staff, actorId: string): StaffDto {
   return {
     id: staff.id,
     fullName: staff.fullName,
-    email: staff.email,
     role: staff.role.name,
     isActive: staff.isActive,
     createdAt: staff.createdAt.toISOString(),
@@ -46,14 +44,13 @@ export class ListStaff {
 /**
  * Creates a staff account.
  *
- * The only operation in the system that needs elevated privilege — the auth
- * admin API will not create a user for an ordinary session. The repository
- * uses the service-role client for that one call and then sets the role
- * through the normal RLS-governed path, so an admin cannot use this route to
- * do anything they could not otherwise do.
+ * The only operation that needs elevated privilege — the auth admin API will
+ * not create a user for an ordinary session. An internal email and random
+ * password are generated server-side; the caller supplies only the name, role,
+ * and a 4-digit PIN.
  *
- * The initial password is passed straight through to the auth provider. It is
- * never stored, never logged, and never returned.
+ * The PIN is hashed with bcrypt in the infrastructure layer and never stored
+ * in plaintext, never logged, and never returned.
  */
 export class CreateStaff {
   constructor(private readonly staff: StaffRepository) {}
@@ -63,18 +60,14 @@ export class CreateStaff {
 
     const data = parseOrThrow(createStaffSchema, input);
 
-    const existing = await this.staff.findByEmail(data.email);
-    if (existing) {
-      throw new ConflictError(
-        `${existing.fullName} already has an account with that email address.`,
-      );
+    if (data.pin !== data.confirmPin) {
+      throw new ValidationError("PINs do not match.", { confirmPin: "PINs do not match." });
     }
 
     const created = await this.staff.create({
       fullName: data.fullName,
-      email: data.email,
       role: Role.of(data.role),
-      initialPassword: data.initialPassword,
+      pin: data.pin,
     });
 
     return toStaffDto(created, actor.id);
