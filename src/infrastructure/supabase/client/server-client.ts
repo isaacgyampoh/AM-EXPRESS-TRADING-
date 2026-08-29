@@ -27,18 +27,11 @@ export async function serverSupabase() {
             for (const { name, value, options } of cookiesToSet) {
               cookieStore.set(name, value, options);
             }
-            if (cookiesToSet.length > 0) {
-              console.log(
-                `[serverSupabase.setAll] wrote ${cookiesToSet.length} cookie(s):`,
-                cookiesToSet.map((c) => c.name).join(", "),
-              );
-            }
-          } catch (err) {
-            // In a server component, cookies() is read-only. That is expected
-            // and harmless — the proxy refreshes the session on every request.
-            // In a server action, this should not throw; log it as an error so
-            // production incidents surface in Vercel runtime logs.
-            console.error("[serverSupabase.setAll] failed to set cookies:", err);
+          } catch {
+            // In a server component, cookies() is read-only, and a refresh
+            // landing mid-render throws here. That is expected and harmless —
+            // the proxy refreshes the session on every request, so the write
+            // happens where it is allowed to.
           }
         },
       },

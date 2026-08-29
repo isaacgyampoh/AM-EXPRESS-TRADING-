@@ -101,25 +101,33 @@ the door open.)
 ## Step 5 — Deploy, then create the first administrator
 
 Deploy from Vercel. Then create the owner's account, which is the one step that
-has to be done by hand:
+has to be done by hand. With `.env.local` filled in, from the project root:
 
-1. Supabase → **Authentication → Users → Add user**. Use the owner's email and
-   a password they will change.
-2. Supabase → **SQL Editor**:
+```bash
+npm run bootstrap:admin -- --pin 4821 --name "Owner name here"
+```
 
-   ```sql
-   update public.profiles
-   set role = 'admin', full_name = 'Owner name here'
-   where email = 'owner@example.com';
-   ```
+Choose a PIN that is not in the script's refusal list — the lockout allows ten
+attempts, so a PIN anyone would guess in ten is not worth having. Then sign in
+with it. From then on staff are created inside the application under **Staff**,
+and no further SQL or scripts are needed.
 
-3. Sign in as that account. From then on, staff are created inside the
-   application under **Staff**, and no further SQL is needed.
+To change that PIN later without the app (a forgotten owner PIN, say):
 
-**Why this is manual.** Sign-up metadata is attacker-controlled — anyone who
-can reach the sign-up endpoint could put `{"role":"admin"}` in it — so the
+```bash
+npm run bootstrap:admin -- --pin 5937 --reset
+```
+
+**Why a script and not SQL.** `auth.users` belongs to GoTrue. A hand-written
+`INSERT` into it produces an account nobody can sign into: several token
+columns have no default and GoTrue reads them as non-null strings, and email
+sign-in resolves accounts through `auth.identities`, which the insert does not
+write. The script calls the admin API, which writes both correctly.
+
+**Why it is manual at all.** Sign-up metadata is attacker-controlled — anyone
+who can reach the sign-up endpoint could put `{"role":"admin"}` in it — so the
 database never reads a role from it. Every account starts as a cashier. The
-first admin has to be promoted by someone with database access, once.
+first admin has to be promoted by someone holding the service-role key, once.
 
 After this, the database will not let the business lock itself out: the last
 active administrator cannot be demoted or deactivated by anyone, including

@@ -1,12 +1,14 @@
 /**
  * Credentials row fetched for PIN verification.
  *
- * Only ever read inside server actions, never serialised to the client.
+ * Read from `staff_credentials`, which only the service-role client can reach.
+ * Never serialised to the client: a 4-digit PIN hash is ten thousand guesses
+ * from being broken offline.
  */
 export interface PinCredential {
   readonly staffId: string;
   readonly email: string;
-  /** bcrypt hash.  May be null for accounts created before PIN auth was added. */
+  /** bcrypt hash.  Null for an account that has no PIN set yet. */
   readonly pinHash: string | null;
   readonly isActive: boolean;
 }
@@ -19,7 +21,7 @@ export interface PinAuthRepository {
    * use the service-role (privileged) client — the anon client has no RLS
    * access at this point.
    *
-   * The result is only used server-side.  pin_hash never reaches the browser.
+   * The result is only used server-side.  The hash never reaches the browser.
    */
   listActiveCredentials(): Promise<PinCredential[]>;
 
@@ -37,34 +39,42 @@ export interface PinAuthRepository {
   ): Promise<void>;
 
   /**
-   * Returns the number of failed attempts from the given IP in the last
-   * `windowSeconds` seconds.
+   * Failed attempts from this IP since the last *successful* one, within the
+   * window.
+   *
+   * "Since the last success" rather than a plain count, because a shop is one
+   * public IP address. Counting every failure in the window means one cashier
+   * fumbling their PIN ten times locks the till for everybody, mid-trade, with
+   * a queue at the counter — an outage the business feels immediately and an
+   * attacker does not.
+   *
+   * Anyone proving they hold a valid PIN clears the counter. A real brute-force
+   * attacker has no valid PIN to clear it with, so the lockout still closes on
+   * them at the same threshold.
    */
-  recentFailedAttempts(ip: string, windowSeconds: number): Promise<number>;
+  failedAttemptsSinceLastSuccess(
+    ip: string,
+    windowSeconds: number,
+  ): Promise<number>;
 
   /**
    * Establishes a Supabase Auth session for the matched staff member.
    *
-   * The implementation uses a disposable-password handshake:
-   *   1. Admin API sets a fresh random password on the user's auth record.
-   *   2. SSR client signs in with that password (writes session cookies).
-   *   3. Admin API immediately rotates the password again so the disposable
-   *      value cannot be reused.
+   * The caller has already verified the PIN. The implementation mints a real
+   * GoTrue session so that every query afterwards runs under RLS as this
+   * person, rather than the application carrying its own idea of who is
+   * signed in.
    *
-   * This avoids the deprecated `type: "magiclink"` OTP flow and works with
-   * any Supabase project configuration.
-   *
-   * @param staffId  Auth user ID — needed for admin.updateUserById.
+   * @param staffId  Auth user ID.
    * @param email    Internal email address stored on the profiles row.
    */
   establishSession(staffId: string, email: string): Promise<void>;
 
   /**
-   * Updates `pin_hash` for a given staff member.
+   * Updates the stored PIN hash for a given staff member.
    *
-   * Uses the privileged client because the change-PIN path runs server-side
-   * under `import "server-only"`, and the application layer has already
-   * verified the current PIN before calling this.
+   * Uses the privileged client: `staff_credentials` has no RLS policies, and
+   * the application layer has already verified the current PIN before calling.
    */
   updatePinHash(staffId: string, newPinHash: string): Promise<void>;
 }

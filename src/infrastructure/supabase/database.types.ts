@@ -48,7 +48,6 @@ export interface Database {
           email: string;
           role: string;
           is_active: boolean;
-          pin_hash: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -58,13 +57,11 @@ export interface Database {
           email: string;
           role?: string;
           is_active?: boolean;
-          pin_hash?: string | null;
         };
         Update: {
           full_name?: string;
           role?: string;
           is_active?: boolean;
-          pin_hash?: string | null;
         };
         Relationships: [
           {
@@ -73,6 +70,38 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "roles";
             referencedColumns: ["name"];
+          },
+        ];
+      };
+
+      /**
+       * Reachable only with the service-role key: RLS is on and there are no
+       * policies. Nothing in the browser bundle may import a client that can
+       * read this.
+       */
+      staff_credentials: {
+        Row: {
+          staff_id: string;
+          pin_hash: string;
+          auth_secret: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          staff_id: string;
+          pin_hash: string;
+          auth_secret?: string | null;
+        };
+        Update: {
+          pin_hash?: string;
+          auth_secret?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "staff_credentials_staff_id_fkey";
+            columns: ["staff_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };
