@@ -192,7 +192,7 @@ export interface Database {
           sku: string;
           name: string;
           category_id: string | null;
-          selling_price: NumericRead;
+          /** Cost of one BASE unit. NULL means unknown, never zero. */
           cost_price: NumericRead | null;
           minimum_stock: number;
           is_active: boolean;
@@ -205,7 +205,6 @@ export interface Database {
           sku: string;
           name: string;
           category_id?: string | null;
-          selling_price: NumericWrite;
           cost_price?: NumericWrite | null;
           minimum_stock?: number;
           is_active?: boolean;
@@ -215,7 +214,6 @@ export interface Database {
           sku?: string;
           name?: string;
           category_id?: string | null;
-          selling_price?: NumericWrite;
           cost_price?: NumericWrite | null;
           minimum_stock?: number;
           is_active?: boolean;
@@ -234,6 +232,72 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      /** The vocabulary of selling units. Admin-managed, so not a CHECK list. */
+      units: {
+        Row: { name: string; is_active: boolean; created_at: string };
+        Insert: { name: string; is_active?: boolean };
+        Update: { is_active?: boolean };
+        Relationships: [];
+      };
+
+      /**
+       * How a product is sold, and for how much.
+       *
+       * `retail_price` is required; `wholesale_price` is null when the shop
+       * does not sell that unit in bulk, and null means the sale is refused —
+       * never quietly served at the retail price. No price here is ever
+       * derived from another.
+       */
+      product_units: {
+        Row: {
+          id: string;
+          product_id: string;
+          unit_name: string;
+          /** Base units contained. 1 for the base unit itself. */
+          base_quantity: number;
+          retail_price: NumericRead;
+          wholesale_price: NumericRead | null;
+          is_default: boolean;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          unit_name: string;
+          base_quantity: number;
+          retail_price: NumericWrite;
+          wholesale_price?: NumericWrite | null;
+          is_default?: boolean;
+          is_active?: boolean;
+        };
+        Update: {
+          unit_name?: string;
+          base_quantity?: number;
+          retail_price?: NumericWrite;
+          wholesale_price?: NumericWrite | null;
+          is_default?: boolean;
+          is_active?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_units_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_units_unit_name_fkey";
+            columns: ["unit_name"];
+            isOneToOne: false;
+            referencedRelation: "units";
+            referencedColumns: ["name"];
           },
         ];
       };
@@ -340,6 +404,14 @@ export interface Database {
           unit_cost: NumericRead | null;
           quantity: number;
           line_total: NumericRead;
+          // Snapshotted at the time of sale, like unit_cost, so a receipt
+          // reprinted after the product is repackaged still says what was
+          // actually sold. Nullable only because rows written before units
+          // existed have none.
+          product_unit_id: string | null;
+          unit_name: string | null;
+          base_quantity: number | null;
+          price_tier: "retail" | "wholesale" | null;
         };
         Insert: NoWrites;
         Update: NoWrites;
@@ -516,12 +588,28 @@ export interface Database {
         Args: {
           p_sku: string;
           p_name: string;
-          p_selling_price: NumericWrite;
-          p_cost_price?: NumericWrite | null;
-          p_category_id?: string | null;
-          p_minimum_stock?: number;
-          p_is_active?: boolean;
-          p_opening_stock?: number;
+          p_category_id: string | null;
+          /** The base unit — what "opening stock: 10" is ten of. */
+          p_unit_name: string;
+          p_retail_price: NumericWrite;
+          /** Null when the shop does not sell this unit wholesale. */
+          p_wholesale_price: NumericWrite | null;
+          /** Cost of one base unit. */
+          p_cost_price: NumericWrite | null;
+          p_minimum_stock: number;
+          p_opening_stock: number;
+        };
+        Returns: string;
+      };
+
+      /** Adds a second way to sell an existing product, at its own prices. */
+      add_product_unit: {
+        Args: {
+          p_product_id: string;
+          p_unit_name: string;
+          p_base_quantity: number;
+          p_retail_price: NumericWrite;
+          p_wholesale_price: NumericWrite | null;
         };
         Returns: string;
       };

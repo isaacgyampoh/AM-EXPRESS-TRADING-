@@ -108,8 +108,12 @@ export class CompleteSale {
           name: product.name,
           // Whatever the client thought the price was is irrelevant; this is
           // the catalogue price, and CheckoutPolicy re-reads it regardless.
+          // Advisory only — CheckoutPolicy re-reads the price from the unit
+          // the line names, and that is what gets charged.
           unitPrice: product.sellingPrice,
           quantity: Quantity.positive(item.quantity),
+          productUnitId: item.productUnitId,
+          priceTier: item.priceTier,
         };
       }),
     );
@@ -140,6 +144,8 @@ export class CompleteSale {
       lines: priced.lines.map((line) => ({
         productId: line.productId,
         quantity: line.quantity.toNumber(),
+        productUnitId: line.productUnitId,
+        priceTier: line.priceTier,
       })),
       payments: tender.lines.map((line) => ({
         method: line.method,

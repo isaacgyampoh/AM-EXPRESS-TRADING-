@@ -9,6 +9,7 @@ import {
 import { InventoryItem } from "@/domain/entities/inventory-item";
 import { InventoryMovement } from "@/domain/entities/inventory-movement";
 import { Product } from "@/domain/entities/product";
+import { ProductUnit } from "@/domain/entities/product-unit";
 import { Money } from "@/domain/value-objects/money";
 import { Quantity } from "@/domain/value-objects/quantity";
 import { Sku } from "@/domain/value-objects/sku";
@@ -39,18 +40,45 @@ export function toCategory(row: Tables<"categories">): Category {
   });
 }
 
-export function toProduct(row: Tables<"products">): Product {
+/** A product row, with its selling units when the query asked for them. */
+export type ProductRowWithUnits = Tables<"products"> & {
+  product_units?: Tables<"product_units">[] | null;
+};
+
+export function toProductUnit(row: Tables<"product_units">): ProductUnit {
+  return ProductUnit.create({
+    id: row.id,
+    unitName: row.unit_name,
+    baseQuantity: row.base_quantity,
+    retailPrice: Money.from(row.retail_price),
+    // `!= null` and not truthiness: a wholesale price of 0 is a real price,
+    // and treating it as "not sold wholesale" would refuse a legitimate sale.
+    wholesalePrice:
+      row.wholesale_price != null ? Money.from(row.wholesale_price) : null,
+    isDefault: row.is_default,
+    isActive: row.is_active,
+  });
+}
+
+export function toProduct(row: ProductRowWithUnits): Product {
+  const units = (row.product_units ?? []).map(toProductUnit);
+
   return Product.create({
     id: asProductId(row.id),
     sku: Sku.of(row.sku),
     name: row.name,
     categoryId: row.category_id ? asCategoryId(row.category_id) : null,
-    sellingPrice: Money.from(row.selling_price),
+    // The price of one default unit. When units were loaded, Product reads it
+    // from the default unit instead, so this fallback only matters for a query
+    // that did not ask for them.
+    sellingPrice:
+      units.find((u) => u.isDefault)?.retailPrice ?? Money.zero(),
     costPrice: row.cost_price != null ? Money.from(row.cost_price) : null,
     minimumStock: row.minimum_stock,
     isActive: row.is_active,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+    units,
   });
 }
 

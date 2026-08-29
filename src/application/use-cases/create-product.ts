@@ -61,7 +61,15 @@ export class CreateProduct {
       sku,
       name: data.name,
       categoryId,
+      unitName: data.unitName,
       sellingPrice: Money.fromDecimalString(data.sellingPrice),
+      // Blank means the shop does not sell this wholesale. Left null rather
+      // than filled in from the retail price: an invented wholesale price is
+      // money given away on every trade sale.
+      wholesalePrice:
+        data.wholesalePrice && data.wholesalePrice !== ""
+          ? Money.fromDecimalString(data.wholesalePrice)
+          : null,
       costPrice:
         data.costPrice && data.costPrice !== ""
           ? Money.fromDecimalString(data.costPrice)

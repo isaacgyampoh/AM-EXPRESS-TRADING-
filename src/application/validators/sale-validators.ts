@@ -17,6 +17,14 @@ export const completeSaleSchema = z.object({
     .array(
       z.object({
         productId: z.uuid(),
+        /**
+         * Which selling unit — a Box rather than a Piece. Omitted means the
+         * product's default unit, so a client that does not offer the choice
+         * still sells the right thing.
+         */
+        productUnitId: z.uuid().optional(),
+        /** Omitted means retail. Wholesale is refused when no price is set. */
+        priceTier: z.enum(["retail", "wholesale"]).optional(),
         quantity: z.coerce
           .number()
           .int("Quantities are whole units")

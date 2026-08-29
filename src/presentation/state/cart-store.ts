@@ -7,7 +7,16 @@ export interface DraftLine {
   /** Decimal string, snapshotted for display only. The server re-prices. */
   readonly unitPrice: string;
   readonly quantity: number;
+  /** Base units on the shelf, so the cap below is compared like with like. */
   readonly availableStock: number;
+  /** Which selling unit this line is for. Omitted means the default. */
+  readonly productUnitId?: string;
+  /** Shown on the line: "2 Box", not a bare "2". */
+  readonly unitName?: string;
+  /** Base units removed by one of these. A Box of 12 is 12. */
+  readonly baseQuantity?: number;
+  /** Omitted means retail. */
+  readonly priceTier?: "retail" | "wholesale";
 }
 
 export interface CartDraft {
@@ -148,28 +157,40 @@ export function addProduct(
   line: Omit<DraftLine, "quantity">,
   quantity = 1,
 ): void {
-  const existing = snapshot.lines.find(
-    (candidate) => candidate.productId === line.productId,
-  );
+  // Keyed by product and unit together. A Box of milk and three loose sachets
+  // are two different things to sell, at two different prices.
+  const sameLine = (candidate: DraftLine) =>
+    candidate.productId === line.productId &&
+    candidate.productUnitId === line.productUnitId;
+
+  const existing = snapshot.lines.find(sameLine);
 
   const lines = existing
     ? snapshot.lines.map((candidate) =>
-        candidate.productId === line.productId
+        sameLine(candidate)
           ? {
               ...candidate,
               // Never past what is on the shelf. The server refuses it too;
               // stopping here means the cashier finds out while they are still
               // talking to the customer.
+              // The cap is in this line's own units: 24 base units is two
+              // Boxes of twelve, not twenty-four.
               quantity: Math.min(
                 candidate.quantity + quantity,
-                line.availableStock,
+                Math.floor(line.availableStock / (line.baseQuantity ?? 1)),
               ),
             }
           : candidate,
       )
     : [
         ...snapshot.lines,
-        { ...line, quantity: Math.min(quantity, line.availableStock) },
+        {
+          ...line,
+          quantity: Math.min(
+            quantity,
+            Math.floor(line.availableStock / (line.baseQuantity ?? 1)),
+          ),
+        },
       ];
 
   publish({
@@ -178,13 +199,28 @@ export function addProduct(
   });
 }
 
-export function setLineQuantity(productId: string, quantity: number): void {
+export function setLineQuantity(
+  productId: string,
+  quantity: number,
+  productUnitId?: string,
+): void {
+  // Product and unit together, so changing the quantity of a Box does not also
+  // change the loose Pieces of the same product sitting on the next line.
+  const isTarget = (line: DraftLine) =>
+    line.productId === productId && line.productUnitId === productUnitId;
+
   const lines =
     quantity <= 0
-      ? snapshot.lines.filter((line) => line.productId !== productId)
+      ? snapshot.lines.filter((line) => !isTarget(line))
       : snapshot.lines.map((line) =>
-          line.productId === productId
-            ? { ...line, quantity: Math.min(quantity, line.availableStock) }
+          isTarget(line)
+            ? {
+                ...line,
+                quantity: Math.min(
+                  quantity,
+                  Math.floor(line.availableStock / (line.baseQuantity ?? 1)),
+                ),
+              }
             : line,
         );
 
@@ -198,8 +234,8 @@ export function setLineQuantity(productId: string, quantity: number): void {
   });
 }
 
-export function removeProduct(productId: string): void {
-  setLineQuantity(productId, 0);
+export function removeProduct(productId: string, productUnitId?: string): void {
+  setLineQuantity(productId, 0, productUnitId);
 }
 
 /** Called once a sale is recorded. The next basket gets a fresh key. */

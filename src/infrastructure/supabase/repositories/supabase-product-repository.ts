@@ -19,8 +19,11 @@ import { toCategory, toProduct } from "../mappers/catalogue";
 
 type Client = SupabaseClient<Database>;
 
+// Selling units come back with the product rather than in a second round trip:
+// a price is not optional information about a product, and on a mobile
+// connection the extra request costs more than the wider row.
 const PRODUCT_COLUMNS =
-  "id, sku, name, category_id, selling_price, cost_price, minimum_stock, is_active, created_by, created_at, updated_at";
+  "id, sku, name, category_id, cost_price, minimum_stock, is_active, created_by, created_at, updated_at, product_units(*)";
 
 /**
  * The catalogue, in Supabase.
@@ -130,11 +133,16 @@ export class SupabaseProductRepository implements ProductRepository {
     const { data, error } = await this.client.rpc("create_product_with_stock", {
       p_sku: product.sku.toString(),
       p_name: product.name,
-      p_selling_price: product.sellingPrice.toDecimalString(),
-      p_cost_price: product.costPrice?.toDecimalString() ?? null,
       p_category_id: product.categoryId,
+      // The base unit: what the opening quantity is counted in, and what stock
+      // stays counted in for the life of the product.
+      p_unit_name: product.unitName ?? "Piece",
+      p_retail_price: product.sellingPrice.toDecimalString(),
+      // Null when the shop has not said what this sells for in bulk. The
+      // database refuses a wholesale sale rather than inventing a price.
+      p_wholesale_price: product.wholesalePrice?.toDecimalString() ?? null,
+      p_cost_price: product.costPrice?.toDecimalString() ?? null,
       p_minimum_stock: product.minimumStock,
-      p_is_active: product.isActive,
       p_opening_stock: product.openingStock,
     });
 
@@ -153,9 +161,6 @@ export class SupabaseProductRepository implements ProductRepository {
     if (changes.sku !== undefined) patch.sku = changes.sku.toString();
     if (changes.name !== undefined) patch.name = changes.name;
     if (changes.categoryId !== undefined) patch.category_id = changes.categoryId;
-    if (changes.sellingPrice !== undefined) {
-      patch.selling_price = changes.sellingPrice.toDecimalString();
-    }
     if (changes.costPrice !== undefined) {
       patch.cost_price = changes.costPrice?.toDecimalString() ?? null;
     }
@@ -163,6 +168,24 @@ export class SupabaseProductRepository implements ProductRepository {
       patch.minimum_stock = changes.minimumStock;
     }
     if (changes.isActive !== undefined) patch.is_active = changes.isActive;
+
+    // Price lives on the selling unit, so repricing is a separate write. This
+    // changes the default unit only: a Box price is its own number and is
+    // edited on the unit itself, never moved in step with the Piece price.
+    if (changes.sellingPrice !== undefined) {
+      const { error: priceError } = await this.client
+        .from("product_units")
+        .update({ retail_price: changes.sellingPrice.toDecimalString() })
+        .eq("product_id", id)
+        .eq("is_default", true);
+
+      if (priceError) {
+        throw mapDatabaseError(priceError, {
+          resource: "Product price",
+          identifier: id,
+        });
+      }
+    }
 
     const { data, error } = await this.client
       .from("products")

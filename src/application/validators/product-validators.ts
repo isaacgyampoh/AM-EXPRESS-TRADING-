@@ -29,7 +29,19 @@ export const createProductSchema = z.object({
   sku: z.string().trim().min(1, "Enter a SKU").max(40),
   name: z.string().trim().min(1, "Enter a product name").max(120),
   categoryId: z.uuid().nullable().optional().or(z.literal("")),
+  /**
+   * What the opening stock is counted in, and what stock stays counted in.
+   * "10" is not a quantity; "10 Box" is.
+   */
+  unitName: z.string().trim().min(1).max(30).default("Piece"),
+  /** Retail price for one of the above. */
   sellingPrice: decimalAmount,
+  /**
+   * Wholesale price for one of the above. Blank means this is not sold
+   * wholesale, and the till refuses a wholesale line rather than falling back
+   * to the retail price.
+   */
+  wholesalePrice: optionalDecimalAmount,
   costPrice: optionalDecimalAmount,
   minimumStock: z.coerce
     .number()
