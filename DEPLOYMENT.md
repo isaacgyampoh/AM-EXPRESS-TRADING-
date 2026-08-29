@@ -98,6 +98,27 @@ the door open.)
 
 ---
 
+## Region: keep Vercel next to the database
+
+`vercel.json` pins the functions to `lhr1` (London). This is not arbitrary and
+should not be removed.
+
+Supabase hosts this project in `eu-west-2`, which is London. Vercel's default
+was `iad1`, Washington DC, so every database round trip crossed the Atlantic —
+and a page makes several in sequence: the proxy verifies the session, the page
+verifies it again, then reads the profile, then reads its data. Measured on the
+deployed app with an empty database, that was 1.0–1.6s of time-to-first-byte
+and 3.5–4.7s page loads, none of it caused by data volume.
+
+The shop is in Ghana. Accra to London is roughly half the round trip of Accra
+to Washington, so co-locating helps the people using it as well as the queries.
+
+**If the Supabase project ever moves region, move this with it.** The two
+belong together; a mismatch is invisible in code review and costs whole seconds
+per page.
+
+---
+
 ## Step 5 — Deploy, then create the first administrator
 
 Deploy from Vercel. Then create the owner's account, which is the one step that
