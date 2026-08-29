@@ -66,11 +66,18 @@ insert into public.categories (id, name) values
 
 -- Soap deliberately has no cost price: it is what makes profit incalculable,
 -- and proving that is half the point of this suite.
-insert into public.products (id, sku, name, category_id, selling_price, cost_price, minimum_stock)
+insert into public.products (id, sku, name, category_id, cost_price, minimum_stock)
 values
-  (:rice, 'RICE-5KG', 'Rice 5kg',       'aaaaaaaa-0000-4000-8000-000000000001', 50.00, 38.00, 5),
-  (:oil,  'OIL-1L',   'Cooking Oil 1L', 'aaaaaaaa-0000-4000-8000-000000000001', 25.00, 19.50, 5),
-  (:soap, 'SOAP-BAR', 'Bar Soap',       'aaaaaaaa-0000-4000-8000-000000000001', 10.00, null,  5);
+  (:rice, 'RICE-5KG', 'Rice 5kg',       'aaaaaaaa-0000-4000-8000-000000000001', 38.00, 5),
+  (:oil,  'OIL-1L',   'Cooking Oil 1L', 'aaaaaaaa-0000-4000-8000-000000000001', 19.50, 5),
+  (:soap, 'SOAP-BAR', 'Bar Soap',       'aaaaaaaa-0000-4000-8000-000000000001', null,  5);
+
+insert into public.product_units
+  (product_id, unit_name, base_quantity, retail_price, is_default)
+values
+  (:rice, 'Piece', 1, 50.00, true),
+  (:oil,  'Piece', 1, 25.00, true),
+  (:soap, 'Piece', 1, 10.00, true);
 
 select public.record_stock_in(:rice, 100, 'Opening stock');
 select public.record_stock_in(:oil,  100, 'Opening stock');

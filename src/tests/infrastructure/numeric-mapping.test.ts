@@ -19,6 +19,21 @@ import { toSale } from "@/infrastructure/supabase/mappers/sales";
  * are. Numbers here are deliberate — writing them as strings would restore the
  * exact assumption that broke.
  */
+
+/** A product_units row as PostgREST sends it: NUMERIC prices as JS numbers. */
+const unitRow = (retail: number, wholesale: number | null = null) => ({
+  id: "99999999-9999-4999-8999-999999999999",
+  product_id: "11111111-1111-4111-8111-111111111111",
+  unit_name: "Piece",
+  base_quantity: 1,
+  retail_price: retail,
+  wholesale_price: wholesale,
+  is_default: true,
+  is_active: true,
+  created_at: "2026-08-29T00:00:00Z",
+  updated_at: "2026-08-29T00:00:00Z",
+});
+
 describe("NUMERIC columns arrive as numbers, not strings", () => {
   it("maps a product's prices from numbers", () => {
     const product = toProduct({
@@ -26,7 +41,7 @@ describe("NUMERIC columns arrive as numbers, not strings", () => {
       sku: "RICE-5KG",
       name: "Rice 5kg",
       category_id: null,
-      selling_price: 15.5,
+      product_units: [unitRow(15.5)],
       cost_price: 12.25,
       minimum_stock: 3,
       is_active: true,
@@ -49,7 +64,7 @@ describe("NUMERIC columns arrive as numbers, not strings", () => {
       sku: "SAMPLE",
       name: "Free sample",
       category_id: null,
-      selling_price: 0,
+      product_units: [unitRow(0)],
       cost_price: 0,
       minimum_stock: 0,
       is_active: true,
@@ -126,7 +141,7 @@ describe("NUMERIC columns arrive as numbers, not strings", () => {
       sku: "X",
       name: "X",
       category_id: null,
-      selling_price: 15.1,
+      product_units: [unitRow(15.1)],
       cost_price: null,
       minimum_stock: 0,
       is_active: true,

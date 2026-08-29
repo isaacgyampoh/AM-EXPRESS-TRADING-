@@ -16,12 +16,25 @@ export interface NewProduct {
   readonly sku: Sku;
   readonly name: string;
   readonly categoryId: CategoryId | null;
+  /** Retail price of one base unit. */
   readonly sellingPrice: Money;
   readonly costPrice: Money | null;
   readonly minimumStock: number;
   readonly isActive: boolean;
   /** Stock to record at creation. Written as a stock_in movement, not a bare balance. */
   readonly openingStock: number;
+  /**
+   * The base unit — what the opening stock is counted in, and what stock stays
+   * counted in. Defaults to "Piece". This is why the form asks: "10" is not a
+   * quantity, "10 Box" is.
+   */
+  readonly unitName?: string;
+  /**
+   * Wholesale price for one base unit, when the shop sells it that way.
+   * Undefined or null means it does not, and a wholesale sale is refused
+   * rather than served at the retail price.
+   */
+  readonly wholesalePrice?: Money | null;
 }
 
 export interface ProductChanges {

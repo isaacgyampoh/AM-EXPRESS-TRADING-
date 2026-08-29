@@ -86,12 +86,20 @@ set role authenticated;
 insert into public.categories (id, name) values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'Provisions');
 
-insert into public.products (id, sku, name, category_id, selling_price, cost_price, minimum_stock)
+insert into public.products (id, sku, name, category_id, cost_price, minimum_stock)
 values
   ('bbbbbbbb-0000-4000-8000-000000000001', 'RICE-5KG', 'Rice 5kg',
-   'aaaaaaaa-0000-4000-8000-000000000001', 50.00, 38.00, 5),
+   'aaaaaaaa-0000-4000-8000-000000000001', 38.00, 5),
   ('bbbbbbbb-0000-4000-8000-000000000002', 'OIL-1L', 'Cooking Oil 1L',
-   'aaaaaaaa-0000-4000-8000-000000000001', 25.00, 19.50, 3);
+   'aaaaaaaa-0000-4000-8000-000000000001', 19.50, 3);
+
+-- Price lives on the selling unit now. Both of these are sold by the piece
+-- only; the box/piece and wholesale cases are exercised further down.
+insert into public.product_units
+  (product_id, unit_name, base_quantity, retail_price, is_default)
+values
+  ('bbbbbbbb-0000-4000-8000-000000000001', 'Piece', 1, 50.00, true),
+  ('bbbbbbbb-0000-4000-8000-000000000002', 'Piece', 1, 25.00, true);
 
 do $$
 begin
@@ -120,22 +128,33 @@ begin
   );
 
   begin
-    insert into public.products (sku, name, selling_price)
-    values ('HACK-1', 'Free Rice', 0.01);
+    insert into public.products (sku, name) values ('HACK-1', 'Free Rice');
     raise exception 'FAIL a cashier was able to create a product';
   exception when insufficient_privilege then
     raise notice 'ok   RLS stops a cashier creating a product';
   end;
 
+  -- Repricing is the one a cashier has a motive for, and it moved to
+  -- product_units, so the policy has to have moved with it.
   begin
-    update public.products set selling_price = 0.01
-    where sku = 'RICE-5KG';
+    update public.product_units set retail_price = 0.01
+    where product_id = 'bbbbbbbb-0000-4000-8000-000000000001';
     perform pg_temp.ok(
-      (select selling_price from public.products where sku = 'RICE-5KG') = 50.00,
+      (select retail_price from public.product_units
+        where product_id = 'bbbbbbbb-0000-4000-8000-000000000001') = 50.00,
       'RLS stops a cashier repricing a product'
     );
   exception when insufficient_privilege then
     raise notice 'ok   RLS stops a cashier repricing a product';
+  end;
+
+  begin
+    insert into public.product_units
+      (product_id, unit_name, base_quantity, retail_price)
+    values ('bbbbbbbb-0000-4000-8000-000000000001', 'Box', 12, 0.01);
+    raise exception 'FAIL a cashier was able to invent a cheap selling unit';
+  exception when insufficient_privilege then
+    raise notice 'ok   RLS stops a cashier adding their own selling unit';
   end;
 
   begin
@@ -644,6 +663,202 @@ end;
 $$;
 
 reset role;
+
+-- -----------------------------------------------------------------------------
+-- Selling by the box and by the piece, wholesale and retail
+-- -----------------------------------------------------------------------------
+-- A carton of milk: 12 sachets to a box. Four prices, and deliberately none of
+-- them derivable from any other. Box retail (120) is not twelve times Piece
+-- retail (144), and Box wholesale (110) is not twelve times Piece wholesale
+-- (108). Shops really do price like this, and any code that multiplied or
+-- divided to fill a gap would get all four numbers wrong.
+\set milk '''bbbbbbbb-0000-4000-8000-000000000009'''
+
+insert into public.products (id, sku, name, cost_price, minimum_stock)
+values (:milk, 'MILK-SACHET', 'Milk sachet', 6.00, 10);
+
+insert into public.product_units
+  (product_id, unit_name, base_quantity, retail_price, wholesale_price, is_default)
+values
+  (:milk, 'Piece', 1,   12.00,  9.00,   true),
+  (:milk, 'Box',   12, 120.00, 110.00, false),
+  -- A unit the shop does not sell in bulk: retail only, wholesale left NULL.
+  (:milk, 'Crate', 144, 1300.00, null,  false);
+
+-- Stocking in is an admin action; selling is the cashier's.
+select set_config('request.jwt.claims',
+  '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}', false);
+
+select public.record_stock_in(:milk, 200, 'Opening stock');
+
+select set_config('request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}', false);
+
+do $$
+declare
+  v_piece uuid;
+  v_box   uuid;
+  v_sale  uuid;
+  v_stock integer;
+begin
+  select id into v_piece from public.product_units
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009' and unit_name = 'Piece';
+  select id into v_box from public.product_units
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009' and unit_name = 'Box';
+
+  perform pg_temp.ok(
+    (select base_quantity from public.product_units where id = v_box) = 12,
+    'a Box knows it holds 12 base units'
+  );
+
+  v_sale := public.complete_sale(
+    'txn-box-1',
+    format('[{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":2,"price_tier":"retail"}]', v_box)::jsonb,
+    '[{"method":"cash","amount":"240.00"}]'::jsonb
+  );
+
+  perform pg_temp.ok(
+    (select total from public.sales where id = v_sale) = 240.00,
+    'two Boxes cost 2 x the Box price, not 24 x the piece price'
+  );
+
+  select quantity_on_hand into v_stock from public.inventory
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009';
+  perform pg_temp.ok(v_stock = 176,
+    'selling 2 Boxes of 12 took 24 base units off the shelf, not 2');
+
+  perform pg_temp.ok(
+    (select unit_name from public.sale_items where sale_id = v_sale) = 'Box',
+    'the sale line records the unit it was sold in'
+  );
+  perform pg_temp.ok(
+    (select base_quantity from public.sale_items where sale_id = v_sale) = 12,
+    'the line snapshots the pack size, so a reprint stays honest after repacking'
+  );
+  perform pg_temp.ok(
+    (select unit_cost from public.sale_items where sale_id = v_sale) = 72.00,
+    'cost per Box is 12 x the base cost — converting a quantity, never a price'
+  );
+
+  -- Wholesale uses the wholesale price, which is not retail minus anything.
+  v_sale := public.complete_sale(
+    'txn-box-2',
+    format('[{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":1,"price_tier":"wholesale"}]', v_box)::jsonb,
+    '[{"method":"cash","amount":"110.00"}]'::jsonb
+  );
+  perform pg_temp.ok(
+    (select total from public.sales where id = v_sale) = 110.00,
+    'a wholesale Box is 110.00 — the number that was typed in'
+  );
+  perform pg_temp.ok(
+    (select price_tier from public.sale_items where sale_id = v_sale) = 'wholesale',
+    'the line records which tier was charged'
+  );
+
+  -- A box and loose pieces of the same product, in one transaction.
+  v_sale := public.complete_sale(
+    'txn-mixed',
+    format('[{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":1,"price_tier":"retail"},{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":3,"price_tier":"retail"}]', v_box, v_piece)::jsonb,
+    '[{"method":"cash","amount":"156.00"}]'::jsonb
+  );
+  perform pg_temp.ok(
+    (select total from public.sales where id = v_sale) = 156.00,
+    'one Box (120) plus three Pieces (36) comes to 156.00'
+  );
+  perform pg_temp.ok(
+    (select count(*) from public.sale_items where sale_id = v_sale) = 2,
+    'a box and loose pieces are two lines on the receipt'
+  );
+  perform pg_temp.ok(
+    (select count(*) from public.inventory_movements where sale_id = v_sale) = 1,
+    'but one stock movement, for the summed base quantity'
+  );
+  perform pg_temp.ok(
+    (select quantity_delta from public.inventory_movements where sale_id = v_sale) = -15,
+    'and it is -15: twelve out of the box, three loose'
+  );
+end;
+$$;
+
+-- Wholesale where no wholesale price exists is refused outright. This is the
+-- rule the schema exists for: no fallback to retail, no fraction of it.
+do $$
+declare v_crate uuid;
+begin
+  select id into v_crate from public.product_units
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009' and unit_name = 'Crate';
+
+  begin
+    perform public.complete_sale(
+      'txn-no-wholesale',
+      format('[{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":1,"price_tier":"wholesale"}]', v_crate)::jsonb,
+      '[{"method":"cash","amount":"1300.00"}]'::jsonb
+    );
+    raise exception 'FAIL a Crate with no wholesale price was sold wholesale';
+  exception when sqlstate 'AM005' then
+    raise notice 'ok   a unit with no wholesale price is refused, not sold at retail';
+  end;
+
+  perform pg_temp.ok(
+    (select count(*) from public.sales where client_transaction_id = 'txn-no-wholesale') = 0,
+    'the refused wholesale sale left nothing behind'
+  );
+end;
+$$;
+
+-- The stock check must sum the lines: each fits alone, together they do not.
+-- The old one-line-per-product constraint used to make this impossible.
+do $$
+declare
+  v_piece uuid;
+  v_box   uuid;
+  v_stock integer;
+begin
+  select id into v_piece from public.product_units
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009' and unit_name = 'Piece';
+  select id into v_box from public.product_units
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009' and unit_name = 'Box';
+
+  select quantity_on_hand into v_stock from public.inventory
+   where product_id = 'bbbbbbbb-0000-4000-8000-000000000009';
+
+  begin
+    -- Boxes alone that fit, plus loose pieces that tip it over. Each line
+    -- passes on its own; the pair does not.
+    perform public.complete_sale(
+      'txn-oversell',
+      format('[{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":%s,"price_tier":"retail"},{"product_id":"bbbbbbbb-0000-4000-8000-000000000009","product_unit_id":"%s","quantity":%s,"price_tier":"retail"}]',
+             v_box, v_stock / 12, v_piece, (v_stock % 12) + 1)::jsonb,
+      '[{"method":"cash","amount":"1.00"}]'::jsonb
+    );
+    raise exception 'FAIL two lines together oversold the shelf';
+  exception when sqlstate 'AM001' then
+    raise notice 'ok   stock is checked across every line touching a product';
+  end;
+
+  perform pg_temp.ok(
+    (select quantity_on_hand from public.inventory
+      where product_id = 'bbbbbbbb-0000-4000-8000-000000000009') = v_stock,
+    'the refused oversell left stock untouched'
+  );
+end;
+$$;
+
+-- An unpriced unit cannot exist: retail_price is NOT NULL, so there is no way
+-- to add a Box and leave the system to work out what it costs.
+do $$
+begin
+  begin
+    insert into public.product_units (product_id, unit_name, base_quantity, retail_price)
+    values ('bbbbbbbb-0000-4000-8000-000000000009', 'Bag', 24, null);
+    raise exception 'FAIL a selling unit was created with no price';
+  exception when not_null_violation then
+    raise notice 'ok   a selling unit cannot exist without its own retail price';
+  end;
+end;
+$$;
+
+select set_config('request.jwt.claims', '', false);
 
 -- -----------------------------------------------------------------------------
 -- Credentials are reachable only by the service role
