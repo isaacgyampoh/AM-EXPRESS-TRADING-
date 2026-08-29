@@ -16,9 +16,12 @@ export default defineConfig({
     environment: "node",
     include: ["src/tests/**/*.test.ts", "src/tests/**/*.test.tsx"],
     setupFiles: ["src/tests/support/setup.ts"],
-    // Infrastructure and end-to-end suites need a live Supabase project and are
-    // opted into separately, so the default `npm test` stays fast and hermetic.
-    exclude: ["src/tests/integration/**", "src/tests/e2e/**", "node_modules/**"],
+    // Integration coverage lives in `npm run db:test`, not here. The rules worth
+    // integration-testing in this system — RLS, the atomicity of a sale, split
+    // payment arithmetic, idempotent retries — are enforced in PostgreSQL, so
+    // they are tested by running the real migrations against a real database
+    // rather than through a mocked client. This config stays hermetic.
+    exclude: ["node_modules/**"],
     coverage: {
       provider: "v8",
       include: ["src/domain/**", "src/application/**"],
