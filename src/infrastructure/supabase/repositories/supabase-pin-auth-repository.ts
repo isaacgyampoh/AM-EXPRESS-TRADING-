@@ -2,31 +2,42 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PinAuthRepository, PinCredential } from "@/domain/repositories/pin-auth-repository";
+import type {
+  PinAuthRepository,
+  PinCredential,
+} from "@/domain/repositories/pin-auth-repository";
 import type { Database } from "../database.types";
 
 type Client = SupabaseClient<Database>;
 
+/** Length of a generated internal auth secret, in bytes before hex encoding. */
+const SECRET_BYTES = 32;
+
 /**
- * PIN authentication repository.
+ * PIN authentication.
  *
- * ALL reads/writes here use the service-role (privileged) client because:
- *   - `listActiveCredentials` is called before any session exists (no RLS).
- *   - `pin_attempts` has no authenticated policies (see migration).
- *   - `updatePinHash` needs to touch any profile row as an admin operation.
+ * Every read and write here uses the service-role client. `staff_credentials`
+ * has RLS on and no policies, deliberately: the PIN hashes and auth secrets it
+ * holds are the two things that must never reach a browser. The SSR client is
+ * used for exactly one call — `signInWithPassword` — because that is what
+ * writes the session cookies into the Next.js response.
  *
- * The SSR client is used only for `establishSession`, where it is needed to
- * write the resulting session cookies back into the Next.js response.
+ * How a PIN becomes a session
+ * ---------------------------
+ * Supabase has no supported API for minting a session on behalf of a user, so
+ * something has to stand in for a password. Each staff member gets one stable
+ * random secret, held on their GoTrue account and mirrored in
+ * `staff_credentials.auth_secret`. Once the PIN checks out, signing in is a
+ * single `signInWithPassword` with that secret.
  *
- * Session establishment uses a disposable-password handshake:
- *   1. Admin API sets a random 64-hex-char password on the user.
- *   2. SSR client calls signInWithPassword — this is the battle-tested path
- *      that properly writes session cookies via the @supabase/ssr setAll hook.
- *   3. Admin API immediately rotates the password to a second random value so
- *      the disposable value used in step 2 cannot be reused.
+ * The secret is provisioned lazily on first sign-in rather than seeded, so it
+ * never has to exist in a migration, a fixture, or the repository's history.
  *
- * This replaces the deprecated `type: "magiclink"` OTP flow which was removed
- * in recent Supabase auth server versions.
+ * This replaces an earlier design that set a fresh disposable password, signed
+ * in with it, and rotated it again on every login. That was three GoTrue round
+ * trips on the critical path of a till, and it raced: two devices signing into
+ * the same account at once would each overwrite the other's password, and one
+ * would be told its PIN was wrong. A stable secret has neither problem.
  */
 export class SupabasePinAuthRepository implements PinAuthRepository {
   constructor(
@@ -37,19 +48,34 @@ export class SupabasePinAuthRepository implements PinAuthRepository {
   ) {}
 
   async listActiveCredentials(): Promise<PinCredential[]> {
-    const { data, error } = await this.privileged
-      .from("profiles")
-      .select("id, email, pin_hash, is_active")
-      .eq("is_active", true);
+    // Two reads joined in memory rather than a PostgREST embed. Staff counts
+    // here are in the dozens, and the embed's shape is easy to get subtly
+    // wrong in a way that silently returns nobody — which would present as
+    // "every PIN is invalid".
+    const [{ data: profiles, error: profileError }, { data: creds, error: credError }] =
+      await Promise.all([
+        this.privileged
+          .from("profiles")
+          .select("id, email, is_active")
+          .eq("is_active", true),
+        this.privileged.from("staff_credentials").select("staff_id, pin_hash"),
+      ]);
 
-    if (error) {
-      throw new Error(`Failed to list credentials: ${error.message}`);
+    if (profileError) {
+      throw new Error(`Failed to list staff: ${profileError.message}`);
+    }
+    if (credError) {
+      throw new Error(`Failed to list credentials: ${credError.message}`);
     }
 
-    return (data ?? []).map((row) => ({
+    const hashByStaffId = new Map(
+      (creds ?? []).map((row) => [row.staff_id, row.pin_hash]),
+    );
+
+    return (profiles ?? []).map((row) => ({
       staffId: row.id,
       email: row.email,
-      pinHash: row.pin_hash ?? null,
+      pinHash: hashByStaffId.get(row.id) ?? null,
       isActive: row.is_active,
     }));
   }
@@ -59,116 +85,164 @@ export class SupabasePinAuthRepository implements PinAuthRepository {
     staffId: string | null,
     succeeded: boolean,
   ): Promise<void> {
-    // Fire-and-forget: a failed write here must not block the login response.
-    // If it throws, swallow — rate limiting degrades gracefully (prefers login
-    // availability over perfect attempt tracking).
-    try {
-      await this.privileged.from("pin_attempts").insert({
-        ip_address: ip,
-        staff_id: staffId,
-        succeeded,
-      });
-    } catch {
-      // Intentionally swallowed.
+    // A failure to record an attempt must not fail the login. Rate limiting
+    // degrades rather than locking the shop out of its own till.
+    const { error } = await this.privileged.from("pin_attempts").insert({
+      ip_address: ip,
+      staff_id: staffId,
+      succeeded,
+    });
+
+    if (error) {
+      console.error("[pin-auth] could not record attempt:", error.message);
     }
   }
 
-  async recentFailedAttempts(ip: string, windowSeconds: number): Promise<number> {
+  async failedAttemptsSinceLastSuccess(
+    ip: string,
+    windowSeconds: number,
+  ): Promise<number> {
     const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
+
+    // Find the most recent success from this IP inside the window; count only
+    // failures after it. See the interface for why a plain count is wrong for
+    // a shop sharing one public address.
+    const { data: lastSuccess, error: successError } = await this.privileged
+      .from("pin_attempts")
+      .select("attempted_at")
+      .eq("ip_address", ip)
+      .eq("succeeded", true)
+      .gte("attempted_at", since)
+      .order("attempted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (successError) {
+      // Fail open: an unreadable attempts table must not block trade.
+      return 0;
+    }
+
+    const countFrom = lastSuccess?.attempted_at ?? since;
 
     const { count, error } = await this.privileged
       .from("pin_attempts")
       .select("id", { count: "exact", head: true })
       .eq("ip_address", ip)
       .eq("succeeded", false)
-      .gte("attempted_at", since);
+      .gt("attempted_at", countFrom);
 
-    if (error) {
-      // Fail open: if we can't read attempts, don't block login. The admin
-      // can investigate the database error separately.
-      return 0;
-    }
+    if (error) return 0;
 
     return count ?? 0;
   }
 
   /**
-   * Establishes a session for `staffId` using the disposable-password handshake.
+   * Signs the staff member in with their stable internal secret, provisioning
+   * one first if this account has never had it.
    *
-   * Step 1 — set disposable password:
-   *   The admin client updates the user's auth.users record with a fresh random
-   *   password.  This password is never stored anywhere — it exists only in this
-   *   function call's stack frame.
-   *
-   * Step 2 — sign in:
-   *   The SSR client calls signInWithPassword.  On success the @supabase/ssr
-   *   setAll cookie handler writes the JWT session cookies into the Next.js
-   *   response, so the browser gets them on the server-action redirect.
-   *
-   * Step 3 — rotate password immediately:
-   *   The admin client sets another random password, making the disposable value
-   *   from step 1 permanently invalid.  Errors here are non-fatal; the session
-   *   is already established and the user is logged in.
+   * The retry matters. If `auth_secret` and the GoTrue account ever disagree —
+   * a half-finished provision, a password reset from the Supabase dashboard,
+   * a restored database backup — the stored secret is wrong and sign-in fails
+   * with credentials the user cannot possibly fix, because they never see it.
+   * Re-provisioning once on that specific failure turns a permanent lockout
+   * into a slow login, and it is safe: the PIN was already verified before
+   * this method was called.
    */
   async establishSession(staffId: string, email: string): Promise<void> {
-    const tag = `[establishSession:${staffId.slice(0, 8)}]`;
+    const stored = await this.readAuthSecret(staffId);
+    const secret = stored ?? (await this.provisionAuthSecret(staffId));
 
-    // --- Step 1: set a disposable password ---
-    const disposable = randomBytes(32).toString("hex"); // 64 hex chars
+    const firstAttempt = await this.ssr.auth.signInWithPassword({
+      email,
+      password: secret,
+    });
 
-    console.log(`${tag} step 1 — updateUserById (set disposable password)`);
-    const { error: setError } = await this.privileged.auth.admin.updateUserById(
+    if (!firstAttempt.error) return;
+
+    // A freshly provisioned secret failing is a real error, not a stale one —
+    // retrying would just set the same thing again.
+    if (!stored) {
+      throw new Error(
+        `Could not start a session: ${firstAttempt.error.message}`,
+      );
+    }
+
+    const replacement = await this.provisionAuthSecret(staffId);
+    const retry = await this.ssr.auth.signInWithPassword({
+      email,
+      password: replacement,
+    });
+
+    if (retry.error) {
+      throw new Error(`Could not start a session: ${retry.error.message}`);
+    }
+  }
+
+  /** Reads the stored secret, or null when the account has never had one. */
+  private async readAuthSecret(staffId: string): Promise<string | null> {
+    const { data, error } = await this.privileged
+      .from("staff_credentials")
+      .select("auth_secret")
+      .eq("staff_id", staffId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Could not read credentials: ${error.message}`);
+    }
+    return data?.auth_secret ?? null;
+  }
+
+  /**
+   * Generates a secret, sets it on the GoTrue account, and stores it.
+   *
+   * Order matters: GoTrue first, our table second. If the process dies between
+   * them the stored secret is stale, which `establishSession` recovers from.
+   * Storing first would leave a secret we believe in and GoTrue has never
+   * heard of, and the same recovery would loop.
+   */
+  private async provisionAuthSecret(staffId: string): Promise<string> {
+    const secret = randomBytes(SECRET_BYTES).toString("hex");
+
+    const { error: authError } = await this.privileged.auth.admin.updateUserById(
       staffId,
-      { password: disposable },
+      { password: secret },
     );
-    if (setError) {
-      console.error(`${tag} step 1 FAILED:`, setError.message);
-      throw new Error(`Session setup failed (set): ${setError.message}`);
+    if (authError) {
+      throw new Error(`Could not prepare the account: ${authError.message}`);
     }
-    console.log(`${tag} step 1 OK`);
 
-    // --- Step 2: sign in with the disposable password ---
-    console.log(`${tag} step 2 — signInWithPassword`);
-    const { data: signInData, error: signInError } =
-      await this.ssr.auth.signInWithPassword({
-        email,
-        password: disposable,
-      });
-    if (signInError) {
-      console.error(`${tag} step 2 FAILED:`, signInError.message, signInError.status);
-      throw new Error(`Session setup failed (sign-in): ${signInError.message}`);
+    const { data, error } = await this.privileged
+      .from("staff_credentials")
+      .update({ auth_secret: secret })
+      .eq("staff_id", staffId)
+      .select("staff_id");
+
+    if (error) {
+      throw new Error(`Could not store credentials: ${error.message}`);
     }
-    console.log(
-      `${tag} step 2 OK — hasSession:${!!signInData?.session} userId:${signInData?.session?.user?.id ?? "none"}`,
-    );
 
-    // --- Step 3: verify session in SSR client storage ---
-    const { data: sessionCheck } = await this.ssr.auth.getSession();
-    console.log(
-      `${tag} step 3 — session in SSR store: hasSession:${!!sessionCheck?.session}`,
-    );
+    // An update matching nothing is not an error to PostgREST, so it has to be
+    // checked. Reaching here with no credentials row should be impossible —
+    // sign-in only gets this far after matching a stored PIN hash — but if it
+    // ever happens the secret would go unsaved and every subsequent login
+    // would silently re-provision. Better to say so than to limp.
+    if (!data || data.length === 0) {
+      throw new Error(
+        `No credentials record for staff ${staffId}; cannot store the auth secret.`,
+      );
+    }
 
-    // --- Step 4: rotate to a fresh random password (invalidate the disposable) ---
-    // Non-fatal: the session is live. A failure here is a minor security
-    // hygiene issue (the disposable stays valid until the next login) but it
-    // cannot be exploited without knowing the internal email, which is an
-    // implementation detail never shown to users.
-    await this.privileged.auth.admin
-      .updateUserById(staffId, { password: randomBytes(32).toString("hex") })
-      .catch((err: unknown) => {
-        console.warn(`${tag} step 4 (rotate password) failed (non-fatal):`, err);
-      });
-    console.log(`${tag} complete`);
+    return secret;
   }
 
   async updatePinHash(staffId: string, newPinHash: string): Promise<void> {
     const { error } = await this.privileged
-      .from("profiles")
+      .from("staff_credentials")
       .update({ pin_hash: newPinHash })
-      .eq("id", staffId);
+      .eq("staff_id", staffId);
 
     if (error) {
-      throw new Error(`Failed to update PIN hash: ${error.message}`);
+      throw new Error(`Failed to update PIN: ${error.message}`);
     }
   }
 }

@@ -58,9 +58,18 @@ endpoint can put `{"role":"admin"}` in it. So the trigger on `auth.users`
 exception, and the test suite proves it by creating a user whose metadata asks
 for admin and asserting they land as a cashier.
 
-The first administrator is promoted once, by hand, by someone with database
-access — see `supabase/seed.sql`. After that, staff are created inside the
-application by an existing admin.
+The first administrator is created once, by hand, by someone holding the
+service-role key — `npm run bootstrap:admin`. After that, staff are created
+inside the application by an existing admin.
+
+**PIN hashes are not on `profiles`.** They live in `staff_credentials`, which
+has RLS enabled and no policies at all, so only the service-role key reaches
+it. The reason is that the `profiles` select policy grants the whole row to its
+owner and to any admin: a hash sitting there would let one admin read every
+cashier's, and four digits is ten thousand candidates — an offline break of
+seconds. Since sales are attributed to the cashier who rang them up, that is a
+repudiation problem, not just a login one. The same table holds each account's
+`auth_secret`, which is sufficient on its own to sign in as its owner.
 
 Two further guards, in a trigger rather than a policy, because a policy sees
 either the old row or the new row but never both:

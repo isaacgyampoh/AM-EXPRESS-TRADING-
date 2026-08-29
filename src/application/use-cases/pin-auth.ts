@@ -18,8 +18,11 @@ const WINDOW_SECONDS = 15 * 60;
  * ---------------
  * * All hashes are compared in parallel to keep total latency proportional to
  *   one bcrypt comparison (~200-400 ms at cost 12) rather than n × that.
- * * Rate limiting is global by IP address.  Per-user limiting is not possible
- *   during anonymous login because we don't know which account is targeted.
+ * * Rate limiting counts failures since the last success from that IP, not
+ *   every failure in the window.  Per-user limiting is not possible during
+ *   anonymous login because we don't know which account is targeted, and a
+ *   shop is a single public IP — see the repository interface for why the
+ *   distinction is what keeps a fumbled PIN from closing the till.
  * * On a mismatch the response is the same generic string regardless of
  *   whether the PIN format was wrong, the PIN was valid but matched nobody, or
  *   the account is deactivated.  No timing side-channel: all hashes are still
@@ -30,7 +33,10 @@ export class LoginWithPin {
 
   async execute(ip: string, input: unknown): Promise<void> {
     // 1. Rate limiting
-    const recent = await this.pinAuth.recentFailedAttempts(ip, WINDOW_SECONDS);
+    const recent = await this.pinAuth.failedAttemptsSinceLastSuccess(
+      ip,
+      WINDOW_SECONDS,
+    );
     if (recent >= MAX_ATTEMPTS) {
       throw new ValidationError(
         "Too many failed attempts. Try again in 15 minutes.",
@@ -85,7 +91,10 @@ export class ChangeOwnPin {
     }
 
     // Verify current PIN with same rate-limiting as login.
-    const recent = await this.pinAuth.recentFailedAttempts(ip, WINDOW_SECONDS);
+    const recent = await this.pinAuth.failedAttemptsSinceLastSuccess(
+      ip,
+      WINDOW_SECONDS,
+    );
     if (recent >= MAX_ATTEMPTS) {
       throw new ValidationError(
         "Too many failed attempts. Try again in 15 minutes.",

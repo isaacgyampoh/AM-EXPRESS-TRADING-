@@ -27,21 +27,20 @@ on conflict do nothing;
 -- -----------------------------------------------------------------------------
 -- Every account created through sign-up starts as a cashier, deliberately:
 -- sign-up metadata is attacker-controlled, so the trigger never reads a role
--- from it. That means the very first admin has to be promoted once, by hand,
--- by someone with database access.
+-- from it. That means the very first admin has to be created once, by hand, by
+-- someone holding the service-role key:
 --
--- Steps on a hosted Supabase project:
+--   npm run bootstrap:admin -- --pin 4821 --name "Owner name here"
 --
---   1. In the dashboard, Authentication -> Users -> Add user, and create the
---      owner's account with a password they will change.
---   2. In the SQL editor, run:
+-- Deliberately not done in SQL. `auth.users` belongs to GoTrue, and a
+-- hand-written INSERT into it produces an account nobody can sign into: token
+-- columns with no default that GoTrue reads as non-null strings, and no
+-- `auth.identities` row for email sign-in to resolve. An earlier migration
+-- seeded an admin that way and left the system unbootable. The script uses the
+-- admin API, which writes both tables correctly.
 --
---        update public.profiles
---        set role = 'admin', full_name = 'Owner name here'
---        where email = 'owner@example.com';
---
---   3. Sign in as that account. From then on, staff are created inside the
---      application and no further SQL is needed.
+-- The PIN is passed on the command line rather than written here, so that no
+-- working credential is ever committed to this repository.
 --
 -- After this, the database will not let the business lock itself out: the last
 -- active admin cannot be demoted or deactivated by anyone, including through

@@ -12,9 +12,9 @@ import { serverSupabase } from "@/infrastructure/supabase/client/server-client";
  * Signs a staff member in with a 4-digit PIN.
  *
  * The PIN is compared server-side against the bcrypt hashes of all active
- * staff members.  On a match, a Supabase Auth session is established via a
- * short-lived magic-link token that is generated and consumed entirely here —
- * the browser never sees a token, an email, or a password.
+ * staff members.  On a match, a Supabase Auth session is established from the
+ * account's internal secret — the browser never sees a token, an email, or a
+ * password.
  *
  * Failures are deliberately generic.  A wrong PIN, an unknown PIN, a
  * deactivated account, and a malformed input all return "Invalid PIN."
@@ -44,9 +44,10 @@ export async function signIn(
     if (err instanceof ValidationError) {
       return failure("SIGN_IN_FAILED", err.message);
     }
-    // Log the real error server-side so it appears in Vercel runtime logs.
-    // Never expose internal details to the client.
-    console.error("[signIn] Unexpected error during PIN login:", err);
+    // An infrastructure failure, not a wrong PIN. Log it server-side — the
+    // user is told nothing beyond the generic message, so this is the only
+    // record that the sign-in broke rather than being refused.
+    console.error("[signIn] PIN login failed unexpectedly:", err);
     return failure("SIGN_IN_FAILED", "Invalid PIN.");
   }
 

@@ -25,12 +25,15 @@ class FakePinAuthRepository implements PinAuthRepository {
     this.attempts.push({ ip, staffId, succeeded });
   }
 
-  async recentFailedAttempts(ip: string): Promise<number> {
-    return this.attempts.filter((a) => a.ip === ip && !a.succeeded).length;
+  /** Mirrors the production rule: only failures after the last success count. */
+  async failedAttemptsSinceLastSuccess(ip: string): Promise<number> {
+    const forIp = this.attempts.filter((a) => a.ip === ip);
+    const lastSuccess = forIp.findLastIndex((a) => a.succeeded);
+    return forIp.slice(lastSuccess + 1).filter((a) => !a.succeeded).length;
   }
 
   async establishSession(staffId: string, email: string): Promise<void> {
-    void staffId; // used in production to call updateUserById; fake ignores it
+    void staffId; // production uses it to look up the auth secret
     this.sessionEstablished.push(email);
   }
 
@@ -127,7 +130,39 @@ describe("LoginWithPin", () => {
     expect(repo.sessionEstablished).toHaveLength(1);
   });
 
-  it("skips credentials without a pin_hash", async () => {
+  it("clears the lockout counter once someone signs in successfully", async () => {
+    // A shop is one public IP. Nine fumbled attempts followed by a real
+    // sign-in must not leave the next cashier one mistake from a locked till.
+    repo.credentials = [await makeCredential("s-1", "a@pos.internal", "1234")];
+    for (let i = 0; i < 9; i++) {
+      repo.attempts.push({ ip: IP, staffId: null, succeeded: false });
+    }
+    repo.attempts.push({ ip: IP, staffId: "s-1", succeeded: true });
+
+    // Five more failures: over the old threshold of 10 in the window, but only
+    // five since the last success.
+    for (let i = 0; i < 5; i++) {
+      repo.attempts.push({ ip: IP, staffId: null, succeeded: false });
+    }
+
+    await expect(useCase.execute(IP, { pin: "1234" })).resolves.toBeUndefined();
+    expect(repo.sessionEstablished).toContain("a@pos.internal");
+  });
+
+  it("still locks out sustained failures with no success between them", async () => {
+    repo.credentials = [await makeCredential("s-1", "a@pos.internal", "1234")];
+    repo.attempts.push({ ip: IP, staffId: "s-1", succeeded: true });
+    for (let i = 0; i < 10; i++) {
+      repo.attempts.push({ ip: IP, staffId: null, succeeded: false });
+    }
+
+    await expect(useCase.execute(IP, { pin: "1234" })).rejects.toThrow(
+      "Too many failed attempts",
+    );
+    expect(repo.sessionEstablished).toHaveLength(0);
+  });
+
+  it("skips credentials without a stored PIN hash", async () => {
     repo.credentials = [
       { staffId: "s-1", email: "nohash@pos.internal", pinHash: null, isActive: true },
     ];

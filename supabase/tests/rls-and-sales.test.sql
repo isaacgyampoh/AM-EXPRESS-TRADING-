@@ -33,6 +33,12 @@ $$;
 \set cashier_id '''22222222-2222-4222-8222-222222222222'''
 \set other_id   '''33333333-3333-4333-8333-333333333333'''
 
+-- Start from an empty roster. The PIN migration seeds a default administrator,
+-- so without this the counts below depend on what the migrations happened to
+-- create — which is how this suite came to assert 3 profiles in a database
+-- that had 4.
+delete from auth.users;
+
 insert into auth.users (id, email, raw_user_meta_data) values
   (:admin_id,   'owner@amexpress.test',   '{"full_name":"Akosua Mensah"}'),
   (:cashier_id, 'cashier@amexpress.test', '{"full_name":"Kofi Boateng"}'),
@@ -638,6 +644,189 @@ end;
 $$;
 
 reset role;
+
+-- -----------------------------------------------------------------------------
+-- Credentials are reachable only by the service role
+-- -----------------------------------------------------------------------------
+-- The whole point of moving PIN hashes off `profiles`: that table's select
+-- policy hands the entire row to its owner and to any admin, and a bcrypt hash
+-- of four digits is ten thousand candidates. An admin who can read a cashier's
+-- hash can sign in as them, and sales are attributed to whoever rang them up.
+insert into public.staff_credentials (staff_id, pin_hash, auth_secret) values
+  (:admin_id,   '$2b$12$SGVyZUlzQVBsYWNlaG9sZGVyaGFzaFZhbHVlRm9yVGVzdHM', 'admin-secret'),
+  (:cashier_id, '$2b$12$QW5vdGhlclBsYWNlaG9sZGVyaGFzaFZhbHVlRm9yVGVzdHM', 'cashier-secret');
+
+-- An admin is the strongest authenticated role there is. If anyone could read
+-- this table it would be them.
+--
+-- Two things can stop a read, and either is a pass: the REVOKE refuses it
+-- outright with insufficient_privilege, or RLS-with-no-policies returns no
+-- rows. What must never happen is a row coming back.
+create or replace function pg_temp.credentials_visible()
+returns integer language plpgsql as $$
+declare n integer;
+begin
+  select count(*) into n from public.staff_credentials;
+  return n;
+exception when insufficient_privilege then
+  return 0;
+end;
+$$;
+
+select set_config('request.jwt.claims', json_build_object('sub', :admin_id)::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    pg_temp.credentials_visible() = 0,
+    'an admin cannot read any credentials row'
+  );
+
+  -- Attempt the write. Whether it is refused outright or silently matches no
+  -- rows, it must not change anything — which is checked below from a session
+  -- that can actually see the table. Checking it from here would prove
+  -- nothing: a reader who is blocked always counts zero.
+  begin
+    update public.staff_credentials set pin_hash = 'overwritten';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+
+reset role;
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from public.staff_credentials where pin_hash = 'overwritten') = 0,
+    'an admin cannot overwrite a credentials row'
+  );
+end;
+$$;
+
+select set_config('request.jwt.claims', json_build_object('sub', :cashier_id)::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    pg_temp.credentials_visible() = 0,
+    'a cashier cannot read even their own credentials row'
+  );
+end;
+$$;
+
+reset role;
+
+select set_config('request.jwt.claims', '', false);
+set role anon;
+
+do $$
+begin
+  perform pg_temp.ok(
+    pg_temp.credentials_visible() = 0,
+    'an anonymous request reads no credentials'
+  );
+end;
+$$;
+
+reset role;
+
+do $$
+begin
+  -- Service role bypasses RLS; it is the only way in, and the application only
+  -- ever reaches it from the server.
+  perform pg_temp.ok(
+    (select count(*) from public.staff_credentials) = 2,
+    'the service role still reads credentials normally'
+  );
+
+  -- The hash must not have survived on profiles.
+  perform pg_temp.ok(
+    not exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'profiles'
+        and column_name = 'pin_hash'
+    ),
+    'profiles no longer carries a pin_hash column'
+  );
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- The auth repair
+-- -----------------------------------------------------------------------------
+-- This is the bug that made the system unbootable. The old migration seeded the
+-- first administrator with a hand-written INSERT into auth.users, which leaves
+-- an account GoTrue cannot sign in: token columns NULL where it reads non-null
+-- strings, and no auth.identities row for email sign-in to resolve through.
+-- Since that was the only account a fresh deployment had, and creating more
+-- requires being signed in, nobody could get in at all.
+--
+-- Insert an account exactly the way the broken seed did, confirm it is broken,
+-- then repair it.
+\set broken_id '''55555555-5555-4555-8555-555555555555'''
+
+insert into auth.users (id, email, raw_user_meta_data)
+values (:broken_id, 'handwritten@amexpress.test', '{"full_name":"Hand Written"}');
+
+do $$
+begin
+  perform pg_temp.ok(
+    not exists (
+      select 1 from auth.identities i
+      where i.user_id = '55555555-5555-4555-8555-555555555555'
+        and i.provider = 'email'
+    ),
+    'a hand-written auth user starts with no email identity (the bug)'
+  );
+  perform pg_temp.ok(
+    (select confirmation_token is null from auth.users
+      where id = '55555555-5555-4555-8555-555555555555'),
+    'a hand-written auth user starts with NULL token columns (the bug)'
+  );
+end;
+$$;
+
+select public.repair_auth_accounts();
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from auth.users u
+      where not exists (
+        select 1 from auth.identities i
+        where i.user_id = u.id and i.provider = 'email'
+      )) = 0,
+    'after repair, every auth user has an email identity to sign in through'
+  );
+
+  perform pg_temp.ok(
+    (select count(*) from auth.users
+      where confirmation_token is null
+         or recovery_token is null
+         or email_change is null
+         or email_change_token_new is null
+         or email_change_token_current is null) = 0,
+    'after repair, no auth user has a NULL token column for GoTrue to choke on'
+  );
+end;
+$$;
+
+-- Idempotent: running it twice must not duplicate identities.
+select public.repair_auth_accounts();
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from auth.identities
+      where user_id = '55555555-5555-4555-8555-555555555555') = 1,
+    'repairing twice does not create a second identity'
+  );
+end;
+$$;
 
 \echo ''
 \echo 'All database behaviour tests passed.'

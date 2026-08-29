@@ -23,7 +23,11 @@ type Client = SupabaseClient<Database>;
  * Staff members no longer have user-visible email addresses or passwords.
  * Instead, each account gets an internal email (`uuid@pos.amexpress.internal`)
  * and a random internal password — both generated here and never returned.
- * The 4-digit PIN is hashed with bcrypt before being written to `pin_hash`.
+ *
+ * The PIN's bcrypt hash and that internal password are both written to
+ * `staff_credentials`, which has RLS on and no policies. They are deliberately
+ * not on `profiles`: that table is readable by its owner and by any admin, and
+ * a 4-digit hash on it would let one staff member recover another's PIN.
  */
 export class SupabaseStaffRepository implements StaffRepository {
   constructor(
@@ -107,7 +111,6 @@ export class SupabaseStaffRepository implements StaffRepository {
       .update({
         full_name: staff.fullName.trim(),
         role: staff.role.name,
-        pin_hash: pinHash,
       })
       .eq("id", id)
       .select("*")
@@ -115,6 +118,28 @@ export class SupabaseStaffRepository implements StaffRepository {
 
     if (error) throw mapDatabaseError(error, { resource: "Staff member" });
     if (!data) throw new NotFoundError("Staff member", id);
+
+    // Credentials live in a table only the service-role key can reach, so this
+    // write uses the privileged client rather than the caller's session.
+    //
+    // `internalPassword` is stored as the auth secret because we already know
+    // it here — createUser set it. That spares this account the lazy
+    // provisioning round trip on its owner's first sign-in.
+    const { error: credentialError } = await this.privilegedClient
+      .from("staff_credentials")
+      .upsert(
+        { staff_id: id, pin_hash: pinHash, auth_secret: internalPassword },
+        { onConflict: "staff_id" },
+      );
+
+    if (credentialError) {
+      // The account exists but has no PIN, so nobody can sign into it. Say so
+      // plainly rather than reporting success and leaving an admin to discover
+      // it when the new cashier cannot start their shift.
+      throw new ValidationError(
+        `The account was created but its PIN could not be saved (${credentialError.message}). Delete the staff member and try again.`,
+      );
+    }
 
     return toStaff(data);
   }

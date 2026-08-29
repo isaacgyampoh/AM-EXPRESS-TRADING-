@@ -46,14 +46,53 @@ alter default privileges in schema public
   grant all on functions to anon, authenticated, service_role;
 
 -- auth.users, cut down to the columns the migrations touch.
+--
+-- The token columns matter more than they look. In the real GoTrue schema they
+-- are NOT NULL-in-practice text columns with no DEFAULT, which is exactly why
+-- a hand-written INSERT produces an account that cannot sign in. They are
+-- reproduced here, nullable and defaultless, so that
+-- 20260829120000_credential_isolation_and_auth_repair.sql is exercised against
+-- the same shape it has to repair in production rather than silently skipped.
 create table if not exists auth.users (
-  id                 uuid primary key default gen_random_uuid(),
-  email              text unique not null,
-  raw_user_meta_data jsonb not null default '{}'::jsonb,
-  created_at         timestamptz not null default now()
+  id                         uuid primary key default gen_random_uuid(),
+  instance_id                uuid,
+  aud                        text,
+  role                       text,
+  email                      text unique not null,
+  encrypted_password         text,
+  email_confirmed_at         timestamptz,
+  raw_app_meta_data          jsonb not null default '{}'::jsonb,
+  raw_user_meta_data         jsonb not null default '{}'::jsonb,
+  is_super_admin             boolean,
+  is_sso_user                boolean not null default false,
+  is_anonymous               boolean not null default false,
+  confirmation_token         text,
+  recovery_token             text,
+  email_change               text,
+  email_change_token_new     text,
+  email_change_token_current text,
+  created_at                 timestamptz not null default now(),
+  updated_at                 timestamptz not null default now()
 );
 
 grant select on auth.users to authenticated, service_role;
+
+-- auth.identities, in its current shape: uuid primary key with a separate
+-- provider_id. Email sign-in resolves the account through this table, so a
+-- user without a row here cannot sign in whatever their password is.
+create table if not exists auth.identities (
+  id              uuid primary key default gen_random_uuid(),
+  provider_id     text not null,
+  user_id         uuid not null references auth.users (id) on delete cascade,
+  identity_data   jsonb not null,
+  provider        text not null,
+  last_sign_in_at timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (provider_id, provider)
+);
+
+grant select on auth.identities to authenticated, service_role;
 
 -- The real auth.uid(), reading the request's JWT claims. Tests impersonate a
 -- user with:  set local request.jwt.claims = '{"sub":"<uuid>"}';
