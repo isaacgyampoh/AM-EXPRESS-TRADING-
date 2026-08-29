@@ -25,12 +25,19 @@ import { mapDatabaseError } from "../errors";
 
 type Client = SupabaseClient<Database>;
 
-/** NUMERIC arrives as a string; it goes straight to Money, never via Number(). */
-const money = (value: string | null): Money =>
-  value === null ? Money.zero() : Money.fromDecimalString(value);
+/**
+ * A NUMERIC from a report function.
+ *
+ * `Money.from` rather than `fromDecimalString` because PostgREST hands these
+ * back as JS numbers, not strings — see `NumericRead` in database.types.ts.
+ * `undefined` is accepted so callers can write `money(row?.total)` for a
+ * function that returned no rows at all.
+ */
+const money = (value: number | string | null | undefined): Money =>
+  value == null ? Money.zero() : Money.from(value);
 
-const maybeMoney = (value: string | null): Money | null =>
-  value === null ? null : Money.fromDecimalString(value);
+const maybeMoney = (value: number | string | null | undefined): Money | null =>
+  value == null ? null : Money.from(value);
 
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -63,12 +70,12 @@ export class SupabaseReportsRepository implements ReportsRepository {
     const row = data?.[0];
     return {
       range,
-      totalSales: money(row?.total_sales ?? "0"),
+      totalSales: money(row?.total_sales),
       transactionCount: Number(row?.transaction_count ?? 0),
-      cashTotal: money(row?.cash_total ?? "0"),
-      mobileMoneyTotal: money(row?.mobile_money_total ?? "0"),
+      cashTotal: money(row?.cash_total),
+      mobileMoneyTotal: money(row?.mobile_money_total),
       splitTransactionCount: Number(row?.split_transaction_count ?? 0),
-      averageSale: money(row?.average_sale ?? "0"),
+      averageSale: money(row?.average_sale),
       unitsSold: Number(row?.units_sold ?? 0),
     };
   }
@@ -143,9 +150,7 @@ export class SupabaseReportsRepository implements ReportsRepository {
 
     return {
       range,
-      total: money(
-        rows.find((row) => row.grouping_kind === "total")?.total ?? "0",
-      ),
+      total: money(rows.find((row) => row.grouping_kind === "total")?.total),
       byCategory: rows
         .filter((row) => row.grouping_kind === "category")
         .map((row) => ({
@@ -176,8 +181,8 @@ export class SupabaseReportsRepository implements ReportsRepository {
       unitsOnHand: Number(row?.units_on_hand ?? 0),
       lowStockCount: Number(row?.low_stock_count ?? 0),
       outOfStockCount: Number(row?.out_of_stock_count ?? 0),
-      valueAtCost: maybeMoney(row?.value_at_cost ?? null),
-      valueAtSellingPrice: money(row?.value_at_selling_price ?? "0"),
+      valueAtCost: maybeMoney(row?.value_at_cost),
+      valueAtSellingPrice: money(row?.value_at_selling_price),
     };
   }
 
@@ -192,11 +197,11 @@ export class SupabaseReportsRepository implements ReportsRepository {
     const row = data?.[0];
     return {
       range,
-      revenue: money(row?.revenue ?? "0"),
-      costOfGoodsSold: maybeMoney(row?.cost_of_goods_sold ?? null),
-      grossProfit: maybeMoney(row?.gross_profit ?? null),
-      expenses: money(row?.expenses ?? "0"),
-      netProfit: maybeMoney(row?.net_profit ?? null),
+      revenue: money(row?.revenue),
+      costOfGoodsSold: maybeMoney(row?.cost_of_goods_sold),
+      grossProfit: maybeMoney(row?.gross_profit),
+      expenses: money(row?.expenses),
+      netProfit: maybeMoney(row?.net_profit),
       productsMissingCost: row?.products_missing_cost ?? [],
     };
   }

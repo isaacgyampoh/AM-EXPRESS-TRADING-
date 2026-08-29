@@ -18,7 +18,7 @@ export interface SaleRowWithChildren {
   id: string;
   receipt_number: string;
   cashier_id: string;
-  total: string;
+  total: number;
   status: "completed" | "voided";
   client_transaction_id: string;
   sold_at: string;
@@ -28,15 +28,15 @@ export interface SaleRowWithChildren {
     product_id: string;
     sku: string;
     name: string;
-    unit_price: string;
-    unit_cost: string | null;
+    unit_price: number;
+    unit_cost: number | null;
     quantity: number;
-    line_total: string;
+    line_total: number;
   }[];
   payments: {
     id: string;
     method: "cash" | "mobile_money";
-    amount: string;
+    amount: number;
     reference: string | null;
     recorded_at: string;
   }[];
@@ -51,10 +51,10 @@ export function toSale(row: SaleRowWithChildren): Sale {
       productId: asProductId(item.product_id),
       sku: item.sku,
       name: item.name,
-      unitPrice: Money.fromDecimalString(item.unit_price),
+      unitPrice: Money.from(item.unit_price),
       quantity: Quantity.positive(item.quantity),
-      lineTotal: Money.fromDecimalString(item.line_total),
-      unitCost: item.unit_cost ? Money.fromDecimalString(item.unit_cost) : null,
+      lineTotal: Money.from(item.line_total),
+      unitCost: item.unit_cost != null ? Money.from(item.unit_cost) : null,
     }),
   );
 
@@ -63,7 +63,7 @@ export function toSale(row: SaleRowWithChildren): Sale {
       id: asPaymentId(payment.id),
       saleId,
       method: payment.method,
-      amount: Money.fromDecimalString(payment.amount),
+      amount: Money.from(payment.amount),
       reference: payment.reference,
       recordedAt: new Date(payment.recorded_at),
     }),
@@ -77,7 +77,7 @@ export function toSale(row: SaleRowWithChildren): Sale {
     // never deleted — so this fallback should be unreachable.
     cashierName: row.profiles?.full_name ?? "Unknown cashier",
     items,
-    total: Money.fromDecimalString(row.total),
+    total: Money.from(row.total),
     payments,
     status: row.status,
     clientTransactionId: row.client_transaction_id,

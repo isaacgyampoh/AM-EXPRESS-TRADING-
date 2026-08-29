@@ -20,9 +20,13 @@ import type { Tables } from "../database.types";
  * All the coupling to Supabase's column names lives here. If the schema is
  * renamed, this file changes and nothing above it does.
  *
- * NUMERIC columns arrive as strings and are handed straight to
- * Money.fromDecimalString — they are never routed through Number() first,
- * because that is where precision would quietly disappear.
+ * NUMERIC columns arrive as JS numbers, not strings — PostgREST serialises a
+ * row with PostgreSQL's `to_json`, which emits them unquoted. They go through
+ * `Money.from`, which refuses anything finer than a pesewa.
+ *
+ * Nullable money is tested with `!= null` rather than for truthiness: a cost
+ * price of 0 is a falsy number, and treating it as "no cost recorded" would
+ * quietly turn a free item into an unknown-margin one in every profit report.
  */
 
 export function toCategory(row: Tables<"categories">): Category {
@@ -41,8 +45,8 @@ export function toProduct(row: Tables<"products">): Product {
     sku: Sku.of(row.sku),
     name: row.name,
     categoryId: row.category_id ? asCategoryId(row.category_id) : null,
-    sellingPrice: Money.fromDecimalString(row.selling_price),
-    costPrice: row.cost_price ? Money.fromDecimalString(row.cost_price) : null,
+    sellingPrice: Money.from(row.selling_price),
+    costPrice: row.cost_price != null ? Money.from(row.cost_price) : null,
     minimumStock: row.minimum_stock,
     isActive: row.is_active,
     createdAt: new Date(row.created_at),

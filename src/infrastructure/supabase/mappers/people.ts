@@ -35,7 +35,8 @@ export function toExpenseCategory(
 export interface ExpenseRowWithJoins {
   id: string;
   category_id: string;
-  amount: string;
+  /** NUMERIC: a JS number off the wire, not a string. See NumericRead. */
+  amount: number;
   method: "cash" | "mobile_money";
   description: string;
   incurred_on: string;
@@ -50,7 +51,7 @@ export function toExpense(row: ExpenseRowWithJoins): Expense {
     id: asExpenseId(row.id),
     categoryId: asExpenseCategoryId(row.category_id),
     categoryName: row.expense_categories?.name ?? "Uncategorised",
-    amount: Money.fromDecimalString(row.amount),
+    amount: Money.from(row.amount),
     method: row.method,
     description: row.description,
     // `incurred_on` is a DATE. Parsing it as UTC midnight keeps it on the day

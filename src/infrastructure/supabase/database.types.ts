@@ -8,10 +8,9 @@
  *
  * Two conventions worth knowing:
  *
- *   - NUMERIC columns arrive over the wire as strings and are typed as
- *     `string` here on purpose. Parsing them into `number` at the edge is
- *     exactly where precision would be lost; the mappers hand them to
- *     Money.fromDecimalString instead.
+ *   - NUMERIC columns are `NumericRead` on the way out and `NumericWrite` on
+ *     the way in. See those types: reads are numbers, however much we might
+ *     prefer otherwise.
  *
  *   - Tables that the application must never write directly — inventory,
  *     inventory_movements, sales, sale_items, payments — have `Insert` and
@@ -30,6 +29,37 @@ export type Json =
 
 /** No writes permitted: the only way in is through a database function. */
 type NoWrites = Record<string, never>;
+
+/**
+ * A NUMERIC column as it actually arrives from PostgREST.
+ *
+ * This file used to claim these were strings, and the mappers passed them
+ * straight to `Money.fromDecimalString`. That was wrong, and it was wrong in
+ * the worst way: it type-checked. PostgREST serialises a row with PostgreSQL's
+ * `to_json`, and `to_json(15.50::numeric)` emits `15.50` — an unquoted JSON
+ * number — so `JSON.parse` hands back the JS number 15.5 and
+ * `fromDecimalString` dies on `input.trim()`.
+ *
+ * Nothing caught it because the SQL suites never cross this boundary and the
+ * unit suites use fakes, so it only showed up in production, on the one report
+ * that returns a row even when the business has no data yet.
+ *
+ * Read money with `Money.from`, which takes either representation and refuses
+ * anything finer than a pesewa. And note the second trap: a NUMERIC 0 is a
+ * falsy number where "0.00" was a truthy string, so nullable money columns must
+ * be tested with `!= null`, never for truthiness.
+ */
+type NumericRead = number;
+
+/**
+ * A NUMERIC column on the way in.
+ *
+ * Strings are preferred and are what the application sends: a decimal string
+ * reaches Postgres without ever being a float, which is the whole reason
+ * `Money` keeps its value in pesewas. Numbers are accepted because PostgREST
+ * takes them.
+ */
+type NumericWrite = string | number;
 
 export interface Database {
   public: {
@@ -162,8 +192,8 @@ export interface Database {
           sku: string;
           name: string;
           category_id: string | null;
-          selling_price: string;
-          cost_price: string | null;
+          selling_price: NumericRead;
+          cost_price: NumericRead | null;
           minimum_stock: number;
           is_active: boolean;
           created_by: string | null;
@@ -175,8 +205,8 @@ export interface Database {
           sku: string;
           name: string;
           category_id?: string | null;
-          selling_price: string;
-          cost_price?: string | null;
+          selling_price: NumericWrite;
+          cost_price?: NumericWrite | null;
           minimum_stock?: number;
           is_active?: boolean;
           created_by?: string | null;
@@ -185,8 +215,8 @@ export interface Database {
           sku?: string;
           name?: string;
           category_id?: string | null;
-          selling_price?: string;
-          cost_price?: string | null;
+          selling_price?: NumericWrite;
+          cost_price?: NumericWrite | null;
           minimum_stock?: number;
           is_active?: boolean;
         };
@@ -271,7 +301,7 @@ export interface Database {
           id: string;
           receipt_number: string;
           cashier_id: string;
-          total: string;
+          total: NumericRead;
           status: "completed" | "voided";
           client_transaction_id: string;
           sold_at: string;
@@ -306,10 +336,10 @@ export interface Database {
           product_id: string;
           sku: string;
           name: string;
-          unit_price: string;
-          unit_cost: string | null;
+          unit_price: NumericRead;
+          unit_cost: NumericRead | null;
           quantity: number;
-          line_total: string;
+          line_total: NumericRead;
         };
         Insert: NoWrites;
         Update: NoWrites;
@@ -336,7 +366,7 @@ export interface Database {
           id: string;
           sale_id: string;
           method: "cash" | "mobile_money";
-          amount: string;
+          amount: NumericRead;
           reference: string | null;
           recorded_at: string;
         };
@@ -370,7 +400,7 @@ export interface Database {
         Row: {
           id: string;
           category_id: string;
-          amount: string;
+          amount: NumericRead;
           method: "cash" | "mobile_money";
           description: string;
           incurred_on: string;
@@ -381,7 +411,7 @@ export interface Database {
         Insert: {
           id?: string;
           category_id: string;
-          amount: string;
+          amount: NumericWrite;
           method: "cash" | "mobile_money";
           description: string;
           incurred_on?: string;
@@ -390,7 +420,7 @@ export interface Database {
         };
         Update: {
           category_id?: string;
-          amount?: string;
+          amount?: NumericWrite;
           method?: "cash" | "mobile_money";
           description?: string;
           incurred_on?: string;
@@ -486,8 +516,8 @@ export interface Database {
         Args: {
           p_sku: string;
           p_name: string;
-          p_selling_price: string;
-          p_cost_price?: string | null;
+          p_selling_price: NumericWrite;
+          p_cost_price?: NumericWrite | null;
           p_category_id?: string | null;
           p_minimum_stock?: number;
           p_is_active?: boolean;
@@ -498,13 +528,13 @@ export interface Database {
       report_sales_summary: {
         Args: { p_from: string; p_to: string; p_cashier_id?: string | null };
         Returns: {
-          total_sales: string;
+          total_sales: NumericRead;
           transaction_count: number;
-          cash_total: string;
-          mobile_money_total: string;
+          cash_total: NumericRead;
+          mobile_money_total: NumericRead;
           split_transaction_count: number;
           units_sold: number;
-          average_sale: string;
+          average_sale: NumericRead;
         }[];
       };
       report_sales_by_product: {
@@ -515,8 +545,8 @@ export interface Database {
           name: string;
           category_name: string | null;
           units_sold: number;
-          revenue: string;
-          profit: string | null;
+          revenue: NumericRead;
+          profit: NumericRead | null;
         }[];
       };
       report_sales_by_category: {
@@ -525,7 +555,7 @@ export interface Database {
           category_id: string | null;
           category_name: string;
           units_sold: number;
-          revenue: string;
+          revenue: NumericRead;
         }[];
       };
       report_sales_by_cashier: {
@@ -534,9 +564,9 @@ export interface Database {
           cashier_id: string;
           cashier_name: string;
           transaction_count: number;
-          revenue: string;
-          cash_total: string;
-          mobile_money_total: string;
+          revenue: NumericRead;
+          cash_total: NumericRead;
+          mobile_money_total: NumericRead;
         }[];
       };
       report_expense_summary: {
@@ -545,7 +575,7 @@ export interface Database {
           grouping_kind: "total" | "category" | "method";
           grouping_id: string | null;
           grouping_name: string;
-          total: string;
+          total: NumericRead;
         }[];
       };
       report_inventory_valuation: {
@@ -555,18 +585,18 @@ export interface Database {
           units_on_hand: number;
           low_stock_count: number;
           out_of_stock_count: number;
-          value_at_cost: string | null;
-          value_at_selling_price: string;
+          value_at_cost: NumericRead | null;
+          value_at_selling_price: NumericRead;
         }[];
       };
       report_profitability: {
         Args: { p_from: string; p_to: string };
         Returns: {
-          revenue: string;
-          cost_of_goods_sold: string | null;
-          gross_profit: string | null;
-          expenses: string;
-          net_profit: string | null;
+          revenue: NumericRead;
+          cost_of_goods_sold: NumericRead | null;
+          gross_profit: NumericRead | null;
+          expenses: NumericRead;
+          net_profit: NumericRead | null;
           products_missing_cost: string[];
         }[];
       };
