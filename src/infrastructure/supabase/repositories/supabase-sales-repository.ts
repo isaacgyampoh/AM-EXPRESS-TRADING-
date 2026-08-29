@@ -29,9 +29,14 @@ export class SupabaseSalesRepository implements SalesRepository {
   constructor(private readonly client: Client) {}
 
   async record(command: RecordSaleCommand): Promise<Sale> {
+    // The unit and tier are sent, not the price. complete_sale looks the price
+    // up from product_units and refuses a wholesale line that has none, so
+    // there is still nothing here a modified client could use to set a price.
     const items: Json = command.lines.map((line) => ({
       product_id: line.productId,
       quantity: line.quantity,
+      product_unit_id: line.productUnitId ?? null,
+      price_tier: line.priceTier ?? "retail",
     }));
 
     const payments: Json = command.payments.map((payment) => ({

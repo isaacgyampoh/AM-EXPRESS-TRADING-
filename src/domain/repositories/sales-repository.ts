@@ -14,7 +14,12 @@ import type { DateRange, Page, PageRequest } from "./shared";
  */
 export interface RecordSaleLine {
   readonly productId: ProductId;
+  /** Counted in the selling unit below, not in base units. */
   readonly quantity: number;
+  /** Which selling unit. Omitted means the product's default. */
+  readonly productUnitId?: string;
+  /** Omitted means retail. */
+  readonly priceTier?: "retail" | "wholesale";
 }
 
 export interface RecordSalePayment {

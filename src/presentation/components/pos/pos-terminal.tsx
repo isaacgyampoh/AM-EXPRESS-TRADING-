@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
-import type { ProductDto } from "@/application/dto/product-dto";
+import type { ProductDto, ProductUnitDto } from "@/application/dto/product-dto";
 import type { ActionResult } from "@/application/services/result";
 import type { CompleteSaleResult } from "@/application/use-cases/complete-sale";
 import type { CompleteSaleInput } from "@/application/validators/sale-validators";
@@ -55,6 +55,12 @@ export function PosTerminal({
   >(null);
   const [isSearching, startSearch] = useTransition();
 
+  // Retail or wholesale, chosen once for the transaction: a customer is one
+  // or the other, and asking per line would slow the till down for a case that
+  // barely happens. The tier is sent per line, so a mixed basket stays
+  // possible if it is ever needed.
+  const [tier, setTier] = useState<"retail" | "wholesale">("retail");
+
   const [cartOpen, setCartOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,19 +106,62 @@ export function PosTerminal({
 
   const unitCount = draft.lines.reduce((sum, line) => sum + line.quantity, 0);
 
+  /**
+   * One tile per way of selling a thing.
+   *
+   * A product sold by the Piece and by the Box gets two tiles rather than a
+   * tile with a hidden picker. It is one tap either way, the price is visible
+   * before the tap, and it is how a till a cashier has used before behaves.
+   */
+  const sellables = useMemo(
+    () =>
+      products.flatMap((product) => {
+        const active = product.units.filter((unit) => unit.isActive);
+        return active.length > 0
+          ? active.map((unit) => ({ product, unit }))
+          : [{ product, unit: null as ProductUnitDto | null }];
+      }),
+    [products],
+  );
+
   const add = useCallback(
-    (product: ProductDto) => {
-      if (product.quantityOnHand <= 0) {
-        toast.error(`${product.name} is out of stock.`);
+    (product: ProductDto, unit: ProductUnitDto | null) => {
+      const price = unit
+        ? tier === "wholesale"
+          ? unit.wholesalePrice
+          : unit.retailPrice
+        : product.sellingPrice;
+
+      // No wholesale price means not sold wholesale. Never the retail price
+      // instead — the database refuses this too, and being refused at the
+      // counter is much better than finding it at stocktake.
+      if (price === null) {
+        toast.error(
+          `${product.name} has no wholesale price for one ${unit?.unitName ?? "unit"}.`,
+        );
+        return;
+      }
+
+      const perUnit = unit?.baseQuantity ?? 1;
+      const sellable = Math.floor(product.quantityOnHand / perUnit);
+
+      if (sellable <= 0) {
+        toast.error(
+          unit && perUnit > 1
+            ? `Not enough ${product.name} for a full ${unit.unitName}.`
+            : `${product.name} is out of stock.`,
+        );
         return;
       }
 
       const line = draft.lines.find(
-        (candidate) => candidate.productId === product.id,
+        (candidate) =>
+          candidate.productId === product.id &&
+          candidate.productUnitId === unit?.id,
       );
-      if (line && line.quantity >= product.quantityOnHand) {
+      if (line && line.quantity >= sellable) {
         toast.error(
-          `Only ${product.quantityOnHand} of ${product.name} left in stock.`,
+          `Only ${sellable} ${unit?.unitName ?? "unit"} of ${product.name} left.`,
         );
         return;
       }
@@ -121,11 +170,15 @@ export function PosTerminal({
         productId: product.id,
         sku: product.sku,
         name: product.name,
-        unitPrice: product.sellingPrice,
+        unitPrice: price,
         availableStock: product.quantityOnHand,
+        productUnitId: unit?.id,
+        unitName: unit?.unitName,
+        baseQuantity: perUnit,
+        priceTier: tier,
       });
     },
-    [addLine, draft.lines, toast],
+    [addLine, draft.lines, toast, tier],
   );
 
   const submit = async (tenders: readonly TenderInput[]) => {
@@ -140,6 +193,8 @@ export function PosTerminal({
         items: draft.lines.map((line) => ({
           productId: line.productId,
           quantity: line.quantity,
+          productUnitId: line.productUnitId,
+          priceTier: line.priceTier,
         })),
         payments: tenders.map((tender) => ({
           method: tender.method,
@@ -186,13 +241,45 @@ export function PosTerminal({
         </div>
       )}
 
-      <div className="px-4 md:px-6 pb-3">
-        <SearchInput
-          value={query}
-          onChange={onQueryChange}
-          placeholder="Search products by name or SKU"
-          label="Search products to sell"
-        />
+      <div className="px-4 md:px-6 pb-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <SearchInput
+            value={query}
+            onChange={onQueryChange}
+            placeholder="Search products by name or SKU"
+            label="Search products to sell"
+          />
+        </div>
+
+        {/* Chosen once per customer. Switching re-prices the tiles, and is
+            disabled once there is a basket: changing the tier under lines that
+            were already added would silently reprice a quoted total. */}
+        <div
+          role="group"
+          aria-label="Price list"
+          className="flex rounded-lg border border-[var(--border)] p-0.5 bg-[var(--surface-raised)] self-start"
+        >
+          {(["retail", "wholesale"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setTier(option)}
+              disabled={draft.lines.length > 0 && tier !== option}
+              aria-pressed={tier === option}
+              className={cn(
+                "min-h-9 px-4 rounded-md text-sm font-medium capitalize transition-colors",
+                tier === option
+                  ? "bg-brand-700 text-white"
+                  : "text-[var(--text-muted)] hover:text-[var(--text)]",
+                draft.lines.length > 0 &&
+                  tier !== option &&
+                  "opacity-40 cursor-not-allowed",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={cn("flex-1 px-4 md:px-6", isSearching && "opacity-60")}>
@@ -208,15 +295,20 @@ export function PosTerminal({
           />
         ) : (
           <ul className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 pb-4">
-            {products.map((product) => (
+            {sellables.map(({ product, unit }) => (
               <ProductTile
-                key={product.id}
+                key={`${product.id}:${unit?.id ?? "default"}`}
                 product={product}
+                unit={unit}
+                tier={tier}
                 inBasket={
-                  draft.lines.find((line) => line.productId === product.id)
-                    ?.quantity ?? 0
+                  draft.lines.find(
+                    (line) =>
+                      line.productId === product.id &&
+                      line.productUnitId === unit?.id,
+                  )?.quantity ?? 0
                 }
-                onAdd={() => add(product)}
+                onAdd={() => add(product, unit)}
                 currencySymbol={currencySymbol}
               />
             ))}
@@ -298,32 +390,48 @@ export function PosTerminal({
 
 function ProductTile({
   product,
+  unit,
+  tier,
   inBasket,
   onAdd,
   currencySymbol,
 }: {
   product: ProductDto;
+  unit: ProductUnitDto | null;
+  tier: "retail" | "wholesale";
   inBasket: number;
   onAdd: () => void;
   currencySymbol: string;
 }) {
-  const soldOut = product.quantityOnHand <= 0;
+  const price = unit
+    ? tier === "wholesale"
+      ? unit.wholesalePrice
+      : unit.retailPrice
+    : product.sellingPrice;
+
+  const perUnit = unit?.baseQuantity ?? 1;
+  // A Box of twelve is unsellable on nine loose units, even though the product
+  // is not out of stock.
+  const soldOut = Math.floor(product.quantityOnHand / perUnit) <= 0;
+  // Null price means this unit is not sold at this tier at all.
+  const unavailable = price === null;
+  const showUnit = product.units.length > 1 && unit !== null;
 
   return (
     <li>
       <button
         type="button"
         onClick={onAdd}
-        disabled={soldOut}
-        aria-label={`Add ${product.name}, ${formatMoney(product.sellingPrice, currencySymbol)}${
-          soldOut ? ", out of stock" : ""
-        }`}
+        disabled={soldOut || unavailable}
+        aria-label={`Add ${product.name}${showUnit ? ` by the ${unit.unitName}` : ""}, ${
+          price ? formatMoney(price, currencySymbol) : "no wholesale price"
+        }${soldOut ? ", out of stock" : ""}`}
         className={cn(
           "relative w-full min-h-24 rounded-2xl border p-3 text-left",
           "flex flex-col justify-between gap-2",
           "bg-[var(--surface-raised)] border-[var(--border)]",
           "active:scale-[0.98] transition-transform",
-          soldOut && "opacity-50 cursor-not-allowed",
+          (soldOut || unavailable) && "opacity-50 cursor-not-allowed",
         )}
       >
         {inBasket > 0 && (
@@ -334,11 +442,19 @@ function ProductTile({
 
         <span className="font-medium leading-tight line-clamp-2">
           {product.name}
+          {showUnit && (
+            <span className="text-[var(--text-muted)] font-normal">
+              {" "}
+              · {unit.unitName}
+            </span>
+          )}
         </span>
 
         <span className="flex items-end justify-between gap-2">
           <span className="font-semibold numeric">
-            {formatMoney(product.sellingPrice, currencySymbol)}
+            {price
+              ? formatMoney(price, currencySymbol)
+              : "No wholesale price"}
           </span>
           <span
             className={cn(
@@ -372,8 +488,12 @@ function CartSheet({
   lines: readonly DraftLine[];
   total: string;
   currencySymbol: string;
-  onSetQuantity: (productId: string, quantity: number) => void;
-  onRemove: (productId: string) => void;
+  onSetQuantity: (
+    productId: string,
+    quantity: number,
+    productUnitId?: string,
+  ) => void;
+  onRemove: (productId: string, productUnitId?: string) => void;
   onCheckout: () => void;
   isOnline: boolean;
 }) {
@@ -411,13 +531,27 @@ function CartSheet({
       ) : (
         <ul className="flex flex-col divide-y divide-[var(--border)]">
           {lines.map((line) => (
-            <li key={line.productId} className="py-3">
+            <li
+              key={`${line.productId}:${line.productUnitId ?? "default"}`}
+              className="py-3"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{line.name}</p>
+                  <p className="font-medium">
+                    {line.name}
+                    {line.unitName && (
+                      <span className="text-[var(--text-muted)] font-normal">
+                        {" "}
+                        · {line.unitName}
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-[var(--text-muted)] numeric mt-0.5">
-                    {formatMoney(line.unitPrice, currencySymbol)} each ·{" "}
-                    {line.availableStock} in stock
+                    {formatMoney(line.unitPrice, currencySymbol)} per{" "}
+                    {line.unitName?.toLowerCase() ?? "unit"}
+                    {line.priceTier === "wholesale" && " · wholesale"} ·{" "}
+                    {Math.floor(line.availableStock / (line.baseQuantity ?? 1))}{" "}
+                    left
                   </p>
                 </div>
                 <p className="font-semibold numeric whitespace-nowrap">
@@ -433,7 +567,13 @@ function CartSheet({
               <div className="mt-2 flex items-center gap-2">
                 <StepperButton
                   label={`Reduce ${line.name}`}
-                  onClick={() => onSetQuantity(line.productId, line.quantity - 1)}
+                  onClick={() =>
+                    onSetQuantity(
+                      line.productId,
+                      line.quantity - 1,
+                      line.productUnitId,
+                    )
+                  }
                 >
                   −
                 </StepperButton>
@@ -442,12 +582,15 @@ function CartSheet({
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  max={line.availableStock}
+                  max={Math.floor(
+                    line.availableStock / (line.baseQuantity ?? 1),
+                  )}
                   value={line.quantity}
                   onChange={(event) =>
                     onSetQuantity(
                       line.productId,
                       Number.parseInt(event.target.value, 10) || 0,
+                      line.productUnitId,
                     )
                   }
                   aria-label={`Quantity of ${line.name}`}
@@ -456,15 +599,24 @@ function CartSheet({
 
                 <StepperButton
                   label={`Add another ${line.name}`}
-                  disabled={line.quantity >= line.availableStock}
-                  onClick={() => onSetQuantity(line.productId, line.quantity + 1)}
+                  disabled={
+                    line.quantity >=
+                    Math.floor(line.availableStock / (line.baseQuantity ?? 1))
+                  }
+                  onClick={() =>
+                    onSetQuantity(
+                      line.productId,
+                      line.quantity + 1,
+                      line.productUnitId,
+                    )
+                  }
                 >
                   +
                 </StepperButton>
 
                 <button
                   type="button"
-                  onClick={() => onRemove(line.productId)}
+                  onClick={() => onRemove(line.productId, line.productUnitId)}
                   className="ml-auto min-h-11 px-3 text-sm font-medium text-red-700 dark:text-red-400"
                 >
                   Remove

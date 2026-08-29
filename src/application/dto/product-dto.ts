@@ -12,13 +12,33 @@ import type { Product } from "@/domain/entities/product";
  * with a currency symbol, because the symbol is a business setting the
  * component reads for itself.
  */
+/** One way a product is sold, flattened for the client. */
+export interface ProductUnitDto {
+  readonly id: string;
+  readonly unitName: string;
+  /** Base units contained. Selling one removes this many from stock. */
+  readonly baseQuantity: number;
+  readonly retailPrice: string;
+  /** Null means not sold wholesale — the till refuses rather than substitutes. */
+  readonly wholesalePrice: string | null;
+  readonly isDefault: boolean;
+  readonly isActive: boolean;
+}
+
 export interface ProductDto {
   readonly id: string;
   readonly sku: string;
   readonly name: string;
   readonly categoryId: string | null;
   readonly categoryName: string | null;
+  /** Retail price of one default selling unit. */
   readonly sellingPrice: string;
+  /** Wholesale price of that unit, or null when it is not sold wholesale. */
+  readonly wholesalePrice: string | null;
+  /** The unit that price is per, and that stock is counted in. */
+  readonly unitName: string;
+  /** How this product can be sold — a Box as well as a Piece, say. */
+  readonly units: readonly ProductUnitDto[];
   readonly costPrice: string | null;
   readonly minimumStock: number;
   readonly isActive: boolean;
@@ -57,6 +77,18 @@ export function toProductDto(
     categoryId: product.categoryId,
     categoryName,
     sellingPrice: product.sellingPrice.toDecimalString(),
+    wholesalePrice:
+      product.defaultUnit?.wholesalePrice?.toDecimalString() ?? null,
+    unitName: product.defaultUnit?.unitName ?? "Piece",
+    units: product.units.map((unit) => ({
+      id: unit.id,
+      unitName: unit.unitName,
+      baseQuantity: unit.baseQuantity,
+      retailPrice: unit.retailPrice.toDecimalString(),
+      wholesalePrice: unit.wholesalePrice?.toDecimalString() ?? null,
+      isDefault: unit.isDefault,
+      isActive: unit.isActive,
+    })),
     costPrice: product.costPrice?.toDecimalString() ?? null,
     minimumStock: product.minimumStock,
     isActive: product.isActive,

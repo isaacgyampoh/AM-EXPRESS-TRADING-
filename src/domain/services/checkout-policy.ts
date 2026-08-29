@@ -52,16 +52,31 @@ export class CheckoutPolicy {
       if (!stock) {
         throw new NotFoundError("Stock record", product.name);
       }
-      if (!stock.canFulfil(line.quantity)) {
+
+      // Which of the product's prices applies. Resolved from the catalogue,
+      // never from the request: the line carries an id and a tier, and those
+      // are only ever used to look a price up.
+      const unit = line.productUnitId
+        ? product.unit(line.productUnitId)
+        : product.defaultUnit;
+
+      // Stock is counted in base units, so a line for 2 Box of 12 needs 24 —
+      // comparing the raw 2 would let a basket clear a check it should fail.
+      const baseNeeded = (unit?.baseQuantity ?? 1) * line.quantity.toNumber();
+      if (stock.quantityOnHand.toNumber() < baseNeeded) {
         throw new InsufficientStockError(
           product.name,
-          line.quantity.toNumber(),
+          baseNeeded,
           stock.quantityOnHand.toNumber(),
         );
       }
 
       // Authoritative price and cost come from the catalogue, not the request.
-      const unitPrice = product.sellingPrice;
+      // `priceFor` refuses a wholesale line with no wholesale price rather
+      // than quietly charging retail.
+      const unitPrice = unit
+        ? unit.priceFor(line.priceTier ?? "retail")
+        : product.sellingPrice;
       return {
         productId: product.id,
         sku: product.sku.toString(),
@@ -70,6 +85,9 @@ export class CheckoutPolicy {
         unitCost: product.costPrice,
         quantity: line.quantity,
         lineTotal: unitPrice.multiply(line.quantity.toNumber()),
+        productUnitId: unit?.id,
+        unitName: unit?.unitName,
+        priceTier: line.priceTier ?? "retail",
       };
     });
 
@@ -107,6 +125,10 @@ export interface RepricedLine {
   readonly unitCost: Money | null;
   readonly quantity: import("../value-objects/quantity").Quantity;
   readonly lineTotal: Money;
+  /** Which selling unit was priced. Undefined for a product with no units. */
+  readonly productUnitId?: string;
+  readonly unitName?: string;
+  readonly priceTier: import("../entities/product-unit").PriceTier;
 }
 
 export interface RepricedCheckout {

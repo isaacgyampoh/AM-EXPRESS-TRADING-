@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { CategoryDto, ProductDto } from "@/application/dto/product-dto";
 import type { ActionResult } from "@/application/services/result";
@@ -22,29 +22,62 @@ type ProductAction = (
 ) => Promise<ActionResult<ProductDto>>;
 
 /**
+ * Mirrors the seed of the `units` lookup table.
+ *
+ * The database is the authority — `product_units.unit_name` has a foreign key
+ * to it — so anything offered here must exist there. When unit management gets
+ * a screen, this list comes from that table instead and this constant goes.
+ */
+const UNIT_OPTIONS = [
+  "Piece",
+  "Box",
+  "Carton",
+  "Pack",
+  "Bag",
+  "Bottle",
+  "Crate",
+  "Dozen",
+  "Sachet",
+  "Roll",
+] as const;
+
+/**
  * Create and edit a product.
  *
  * One form for both, because the fields are the same and two nearly-identical
  * forms drift apart. The only difference is opening stock, which exists once:
  * after a product is created, stock moves through the stock functions so that
  * every change has a movement row behind it.
+ *
+ * The unit is chosen before the prices, and every money label repeats it —
+ * "Retail price per Box" — because a price with no unit attached is the bug
+ * this whole change exists to remove.
  */
 export function ProductForm({
   action,
   categories,
   product,
   submitLabel,
+  units = UNIT_OPTIONS,
 }: {
   action: ProductAction;
   categories: readonly CategoryDto[];
   product?: ProductDto;
   submitLabel: string;
+  units?: readonly string[];
 }) {
   const toast = useToast();
   const router = useRouter();
   const { currencySymbol } = useSettings();
 
   const isEditing = Boolean(product);
+
+  // Tracked so the price and stock fields can say what they are counting.
+  // "Selling price" and "Opening stock: 10" are ambiguous on their own; ten
+  // boxes and ten sachets are very different deliveries.
+  const [unitName, setUnitName] = useState<string>(
+    product?.unitName ?? "Piece",
+  );
 
   // Handled inside the action rather than in an effect watching its result:
   // navigating a render later shows the old form for a beat, which on a slow
@@ -117,9 +150,21 @@ export function ProductForm({
         error={fieldErrors?.categoryId}
       />
 
+      {!isEditing && (
+        <Select
+          label="Sold and counted by"
+          name="unitName"
+          value={unitName}
+          onChange={(e) => setUnitName(e.target.value)}
+          options={units.map((unit) => ({ value: unit, label: unit }))}
+          hint="Stock is counted in this unit. You can add other ways to sell it — a Box of these, say — after it is created."
+          error={fieldErrors?.unitName}
+        />
+      )}
+
       <div className="grid gap-5 sm:grid-cols-2">
         <MoneyInput
-          label="Selling price"
+          label={`Retail price per ${unitName}`}
           name="sellingPrice"
           symbol={currencySymbol}
           defaultValue={product?.sellingPrice}
@@ -128,14 +173,23 @@ export function ProductForm({
         />
 
         <MoneyInput
-          label="Cost price"
-          name="costPrice"
+          label={`Wholesale price per ${unitName}`}
+          name="wholesalePrice"
           symbol={currencySymbol}
-          defaultValue={product?.costPrice ?? ""}
-          hint="What you paid. Leave blank if you do not know — profit reports will skip this product rather than assume it cost nothing."
-          error={fieldErrors?.costPrice}
+          defaultValue={product?.wholesalePrice ?? ""}
+          hint="Leave blank if you do not sell this wholesale. It is never worked out from the retail price — a wholesale sale is refused instead."
+          error={fieldErrors?.wholesalePrice}
         />
       </div>
+
+      <MoneyInput
+        label={`Cost price per ${unitName}`}
+        name="costPrice"
+        symbol={currencySymbol}
+        defaultValue={product?.costPrice ?? ""}
+        hint="What you paid. Leave blank if you do not know — profit reports will skip this product rather than assume it cost nothing."
+        error={fieldErrors?.costPrice}
+      />
 
       <div className="grid gap-5 sm:grid-cols-2">
         <QuantityInput
@@ -148,10 +202,10 @@ export function ProductForm({
 
         {!isEditing && (
           <QuantityInput
-            label="Opening stock"
+            label={`Opening stock (${unitName})`}
             name="openingStock"
             defaultValue={0}
-            hint="How many you have right now. Recorded as a stock-in so the history starts here."
+            hint={`How many ${unitName.toLowerCase()} you have right now. Recorded as a stock-in so the history starts here.`}
             error={fieldErrors?.openingStock}
           />
         )}
