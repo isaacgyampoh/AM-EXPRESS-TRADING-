@@ -22,6 +22,11 @@ import {
   SetUnitActive,
 } from "@/application/use-cases/manage-units";
 import {
+  CreateIncentive,
+  ListIncentives,
+  SetIncentiveStatus,
+} from "@/application/use-cases/manage-incentives";
+import {
   CreateExpense,
   CreateExpenseCategory,
   DeleteExpense,
@@ -60,6 +65,7 @@ import { SupabaseReportsRepository } from "./supabase/repositories/supabase-repo
 import { SupabaseSalesRepository } from "./supabase/repositories/supabase-sales-repository";
 import { SupabaseSettingsRepository } from "./supabase/repositories/supabase-settings-repository";
 import { SupabaseStaffRepository } from "./supabase/repositories/supabase-staff-repository";
+import { SupabaseIncentiveRepository } from "./supabase/repositories/supabase-incentive-repository";
 import { SupabaseUnitRepository } from "./supabase/repositories/supabase-unit-repository";
 
 /**
@@ -88,6 +94,7 @@ export async function repositories() {
     expenses: new SupabaseExpenseRepository(client),
     reports: new SupabaseReportsRepository(client),
     units: new SupabaseUnitRepository(client),
+    incentives: new SupabaseIncentiveRepository(client),
   };
 }
 
@@ -178,6 +185,9 @@ export async function getUseCases() {
     listStaff: new ListStaff(repos.staff),
     assignRole: new AssignRole(repos.staff),
     setStaffActive: new SetStaffActive(repos.staff),
+    listIncentives: new ListIncentives(repos.incentives),
+    createIncentive: new CreateIncentive(repos.incentives),
+    setIncentiveStatus: new SetIncentiveStatus(repos.incentives),
 
     // Settings
     getBusinessSettings: new GetBusinessSettings(repos.settings),

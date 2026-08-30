@@ -1043,5 +1043,106 @@ begin
 end;
 $$;
 
+
+-- -----------------------------------------------------------------------------
+-- Staff incentives: an admin sees everyone, a cashier sees only themselves
+-- -----------------------------------------------------------------------------
+-- Pay is the fastest way to sour a small team, so this is not a UI decision.
+-- Deliberately NOT :cashier_id: earlier tests in this file promote that
+-- account to admin, and an admin seeing every row is the correct behaviour.
+-- The plain staff member left by this point is the hand-written user.
+\set plain_staff '''55555555-5555-4555-8555-555555555555'''
+
+insert into public.staff_incentives
+  (staff_id, amount, period_start, period_end, reason, recorded_by)
+values
+  (:plain_staff, 200.00, '2026-08-01', '2026-08-31', 'August commission', :admin_id),
+  (:cashier_id,  350.00, '2026-08-01', '2026-08-31', 'August commission', :admin_id);
+
+select set_config('request.jwt.claims', json_build_object('sub', :admin_id, 'role', 'authenticated')::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from public.staff_incentives) = 2,
+    'an admin sees every incentive'
+  );
+end;
+$$;
+
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', :plain_staff, 'role', 'authenticated')::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from public.staff_incentives) = 1,
+    'a cashier sees only their own incentive'
+  );
+  perform pg_temp.ok(
+    (select amount from public.staff_incentives) = 200.00,
+    'and it is theirs, not the other cashier''s'
+  );
+
+  begin
+    insert into public.staff_incentives
+      (staff_id, amount, period_start, period_end, reason, recorded_by)
+    values ('55555555-5555-4555-8555-555555555555', 5000.00,
+            '2026-08-01', '2026-08-31', 'a bonus I have awarded myself',
+            '55555555-5555-4555-8555-555555555555');
+    raise exception 'FAIL a cashier awarded themselves an incentive';
+  exception when insufficient_privilege then
+    raise notice 'ok   a cashier cannot award themselves an incentive';
+  end;
+
+  begin
+    update public.staff_incentives set status = 'paid';
+    perform pg_temp.ok(
+      (select count(*) from public.staff_incentives where status = 'paid') = 0,
+      'a cashier cannot mark their own incentive paid'
+    );
+  exception when insufficient_privilege then
+    raise notice 'ok   a cashier cannot mark their own incentive paid';
+  end;
+end;
+$$;
+
+reset role;
+
+-- Cancelled incentives are kept, and excluded from the money totals.
+do $$
+begin
+  update public.staff_incentives set status = 'cancelled'
+   where staff_id = '22222222-2222-4222-8222-222222222222';
+
+  perform pg_temp.ok(
+    (select count(*) from public.staff_incentives) = 2,
+    'cancelling keeps the record rather than deleting it'
+  );
+end;
+$$;
+
+select set_config('request.jwt.claims', json_build_object('sub', :admin_id, 'role', 'authenticated')::text, false);
+set role authenticated;
+
+do $$
+declare r record;
+begin
+  select * into r from public.report_staff_incentives('2026-08-01', '2026-08-31');
+  perform pg_temp.ok(r.total_pending = 200.00,
+    'the incentive report counts the live one');
+  perform pg_temp.ok(
+    (select count(*) from public.report_staff_incentives('2026-08-01', '2026-08-31')) = 1,
+    'and leaves the cancelled one out entirely'
+  );
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', false);
+
 \echo ''
 \echo 'All database behaviour tests passed.'

@@ -136,6 +136,47 @@ export interface Database {
         ];
       };
 
+      staff_incentives: {
+        Row: {
+          id: string;
+          staff_id: string;
+          amount: NumericRead;
+          period_start: string;
+          period_end: string;
+          reason: string;
+          status: "pending" | "paid" | "cancelled";
+          recorded_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          staff_id: string;
+          amount: NumericWrite;
+          period_start: string;
+          period_end: string;
+          reason: string;
+          status?: "pending" | "paid" | "cancelled";
+          recorded_by: string;
+        };
+        Update: {
+          amount?: NumericWrite;
+          period_start?: string;
+          period_end?: string;
+          reason?: string;
+          status?: "pending" | "paid" | "cancelled";
+        };
+        Relationships: [
+          {
+            foreignKeyName: "staff_incentives_staff_id_fkey";
+            columns: ["staff_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
       pin_attempts: {
         Row: {
           id: string;
@@ -612,6 +653,16 @@ export interface Database {
           p_wholesale_price: NumericWrite | null;
         };
         Returns: string;
+      };
+      report_staff_incentives: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          staff_id: string;
+          staff_name: string;
+          incentive_count: number;
+          total_pending: NumericRead;
+          total_paid: NumericRead;
+        }[];
       };
       report_sales_summary: {
         Args: { p_from: string; p_to: string; p_cashier_id?: string | null };
