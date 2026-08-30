@@ -8,141 +8,142 @@ export const PIN_LENGTH = 4;
 interface PinInputProps {
   value: string;
   onChange: (pin: string) => void;
-  /** Submits when the field is complete and the user presses Enter. */
-  onSubmit: () => void;
   disabled?: boolean;
   invalid?: boolean;
   describedBy?: string;
+  /**
+   * Rendered between the boxes and the reveal control.
+   *
+   * The status line belongs directly under the digits it is about — a message
+   * two controls away from the thing it describes gets read as being about the
+   * wrong one.
+   */
+  status?: React.ReactNode;
 }
 
 /**
- * A 4-digit PIN field.
+ * A 4-digit PIN, shown as four boxes.
  *
- * This replaced an on-screen keypad. The keypad looked like a calculator
- * bolted to a login page, and it was worse than the thing it imitated: a phone
- * already has a numeric keypad, and it is the one the cashier's thumbs know.
- * `inputMode="numeric"` summons it, so on the device this is actually used on,
- * nothing was lost by deleting ours.
+ * One real input sits transparently over the boxes and holds the value; the
+ * boxes are decoration that reflects it. Four separate inputs is the other
+ * common approach and it is a focus-juggling bug farm — paste, backspace at a
+ * boundary, and autofill each need their own special case, and on Android the
+ * soft keyboard fights the focus moves. One input has none of that and still
+ * looks like four.
  *
- * The value is masked by default and revealed on request. A cashier signs in
- * at a counter with customers on the other side of it, so the default has to
- * be hidden; but PINs get mistyped, and a field you cannot inspect turns one
- * typo into three failed attempts against a lockout.
- *
- * Non-digits are stripped rather than rejected. A stray letter from a
- * predictive keyboard should not clear four correct digits.
+ * Masked by default because a cashier signs in at a counter with customers on
+ * the other side of it, with a reveal for when a PIN has been mistyped twice
+ * and the person needs to see what they are actually entering.
  */
 export function PinInput({
   value,
   onChange,
-  onSubmit,
   disabled,
   invalid,
   describedBy,
+  status,
 }: PinInputProps) {
   const [revealed, setRevealed] = useState(false);
+  const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     ref.current?.focus();
   }, []);
 
+  // After a failure the parent clears the value; take the caret back so the
+  // next attempt is just typing, with nothing to tap first.
+  useEffect(() => {
+    if (value === "" && !disabled) ref.current?.focus();
+  }, [value, disabled]);
+
   return (
-    <div className="relative">
-      <input
-        ref={ref}
-        id="pin"
-        name="pin"
-        type={revealed ? "text" : "password"}
-        // Brings up the phone's own number pad, and stops password managers
-        // and autocorrect treating four digits as something to help with.
-        inputMode="numeric"
-        pattern="[0-9]*"
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-        maxLength={PIN_LENGTH}
-        value={value}
-        disabled={disabled}
-        aria-invalid={invalid || undefined}
-        aria-describedby={describedBy}
-        onChange={(e) =>
-          onChange(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))
-        }
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && value.length === PIN_LENGTH) {
-            e.preventDefault();
-            onSubmit();
+    <div className="flex flex-col gap-3">
+      <div
+        className="relative"
+        onClick={() => ref.current?.focus()}
+        role="presentation"
+      >
+        <input
+          ref={ref}
+          id="pin"
+          name="pin"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={PIN_LENGTH}
+          value={value}
+          disabled={disabled}
+          aria-label="PIN"
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) =>
+            onChange(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))
           }
-        }}
-        className={cn(
-          "w-full min-h-14 rounded-lg pl-4 pr-12 py-2.5",
-          "bg-[var(--surface-raised)] text-[var(--text)]",
-          "border border-[var(--border)]",
-          // 1.25rem so four characters read as a code rather than a word, and
-          // 16px minimum so iOS does not zoom the viewport on focus.
-          "text-xl tracking-[0.5em] font-medium",
-          "disabled:opacity-60 disabled:cursor-not-allowed",
-          invalid && "border-red-600 ring-1 ring-red-600",
-        )}
-      />
+          // Transparent and stretched across the boxes: every tap lands here,
+          // so the keyboard opens wherever the person aims. The outline is
+          // suppressed because this element spans all four boxes — a ring
+          // around the row would say "the whole thing is focused" when what
+          // the eye needs is which digit is next. The active box carries that.
+          className="absolute inset-0 w-full h-full opacity-0 outline-none focus:outline-none cursor-default disabled:cursor-not-allowed"
+        />
+
+        <div className="flex justify-center gap-3" aria-hidden="true">
+          {Array.from({ length: PIN_LENGTH }).map((_, index) => {
+            const filled = index < value.length;
+            const active = focused && index === value.length && !disabled;
+
+            return (
+              <div
+                key={index}
+                className={cn(
+                  "grid place-items-center",
+                  "size-14 rounded-xl border bg-[var(--surface-raised)]",
+                  "text-xl font-semibold tabular-nums",
+                  "transition-colors duration-100",
+                  filled
+                    ? "border-[var(--border)]"
+                    : "border-[var(--border)] text-transparent",
+                  active && "border-brand-600 ring-2 ring-brand-600/20",
+                  invalid && "border-red-500",
+                  disabled && "opacity-60",
+                )}
+              >
+                {filled ? (
+                  revealed ? (
+                    value[index]
+                  ) : (
+                    <span className="size-2.5 rounded-full bg-[var(--text)]" />
+                  )
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {status}
 
       <button
         type="button"
-        onClick={() => setRevealed((r) => !r)}
+        onClick={() => {
+          setRevealed((r) => !r);
+          ref.current?.focus();
+        }}
         disabled={disabled}
-        // The label states the action, not the state: a screen reader user
-        // needs to know what pressing it will do.
-        aria-label={revealed ? "Hide PIN" : "Show PIN"}
         className={cn(
-          "absolute right-1 top-1/2 -translate-y-1/2",
-          "grid place-items-center size-11 rounded-md",
+          "self-center min-h-9 px-2 text-sm font-medium",
           "text-[var(--text-muted)] hover:text-[var(--text)]",
-          "hover:bg-[var(--surface-sunken)] transition-colors",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
+          "transition-colors disabled:opacity-40",
         )}
       >
-        {revealed ? <EyeOffIcon /> : <EyeIcon />}
+        {revealed ? "Hide PIN" : "Show PIN"}
       </button>
     </div>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10.6 6.2A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-3.2 4.2M6.5 6.9A17.6 17.6 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.3-1" />
-      <path d="m3 3 18 18" />
-      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
-    </svg>
   );
 }

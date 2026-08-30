@@ -36,19 +36,26 @@ export async function signIn(
   const pin = formData.get("pin");
   const next = formData.get("next");
 
-  const { loginWithPin } = await getPinUseCases();
-
   try {
+    // Inside the try, deliberately. Building the use case constructs a
+    // Supabase client, which throws if the environment is misconfigured or
+    // unreadable — and a throw here escapes the action and replaces the whole
+    // screen with "This page couldn't load". A cashier who cannot sign in
+    // needs a sentence, not a stack trace they cannot act on.
+    const { loginWithPin } = await getPinUseCases();
     await loginWithPin.execute(ip, { pin });
   } catch (err) {
     if (err instanceof ValidationError) {
       return failure("SIGN_IN_FAILED", err.message);
     }
-    // An infrastructure failure, not a wrong PIN. Log it server-side — the
-    // user is told nothing beyond the generic message, so this is the only
+    // An infrastructure failure, not a wrong PIN. Say so rather than blaming
+    // the person's PIN, and log the real reason server-side — this is the only
     // record that the sign-in broke rather than being refused.
     console.error("[signIn] PIN login failed unexpectedly:", err);
-    return failure("SIGN_IN_FAILED", "Invalid PIN.");
+    return failure(
+      "SIGN_IN_FAILED",
+      "Could not sign in just now. Check your connection and try again.",
+    );
   }
 
   // Only follow a relative path to prevent open redirects.

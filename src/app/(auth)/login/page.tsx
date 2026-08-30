@@ -12,13 +12,14 @@ export const metadata: Metadata = {
  *
  * Staff sign in with a 4-digit PIN — no email, no username. The business name
  * and initials come from the compile-time `branding` config because this page
- * renders before a session exists, and RLS refuses to serve the settings table
- * to an unauthenticated request.
+ * renders before a session exists, and RLS refuses the settings table to an
+ * unauthenticated request.
  *
- * Deliberately plain. This is the first screen of a till that someone opens
- * several times a day, standing up, often with a customer waiting: it wants to
- * be legible and fast, not impressive. One column, one field, one button, and
- * enough breathing room that nothing is mis-tapped.
+ * Centred and deliberately sparse. There is one thing to do here, it takes
+ * four taps, and it is done standing up with a customer waiting — so the
+ * screen holds a name, four boxes and one line of text, and nothing else
+ * competing for the eye. No card around the boxes: they already read as a
+ * group, and a border around a border is just furniture.
  */
 export default async function LoginPage({
   searchParams,
@@ -28,32 +29,27 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <main className="min-h-dvh grid place-items-center px-5 py-12 bg-[var(--surface-sunken)]">
-      <div className="w-full max-w-sm">
-        <div className="mb-7 flex items-center gap-3">
-          <div
-            className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-700 text-white text-sm font-semibold"
-            aria-hidden="true"
-          >
-            {brandInitials()}
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold leading-tight truncate">
-              {branding.name}
-            </h1>
-            <p className="text-sm text-[var(--text-muted)] leading-tight">
-              Staff sign in
-            </p>
-          </div>
+    <main className="min-h-dvh grid place-items-center px-6 py-10 bg-[var(--surface)]">
+      <div className="w-full max-w-xs flex flex-col items-center">
+        <div
+          className="grid size-12 place-items-center rounded-xl bg-brand-700 text-white text-base font-semibold"
+          aria-hidden="true"
+        >
+          {brandInitials()}
         </div>
 
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-5">
+        <h1 className="mt-4 text-xl font-semibold text-center">
+          {branding.name}
+        </h1>
+
+        <div className="mt-8 w-full">
           <PinLoginForm action={signIn} next={next} />
         </div>
 
-        <p className="mt-5 text-xs text-[var(--text-muted)]">
-          Accounts are managed by an administrator. If you cannot sign in, ask
-          them to reset your PIN.
+        <p className="mt-12 text-center text-xs text-[var(--text-muted)]">
+          Accounts are managed by an administrator.
+          <br />
+          If you cannot sign in, ask them to reset your PIN.
         </p>
       </div>
     </main>
