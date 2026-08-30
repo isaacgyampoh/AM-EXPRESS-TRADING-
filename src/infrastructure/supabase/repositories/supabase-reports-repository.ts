@@ -206,6 +206,23 @@ export class SupabaseReportsRepository implements ReportsRepository {
     };
   }
 
+  async staffIncentives(range: DateRange) {
+    const { data, error } = await this.client.rpc("report_staff_incentives", {
+      p_from: isoDate(range.from),
+      p_to: isoDate(range.to),
+    });
+
+    if (error) throw mapDatabaseError(error, { resource: "Incentive report" });
+
+    return (data ?? []).map((row) => ({
+      staffId: asStaffId(row.staff_id),
+      staffName: row.staff_name,
+      count: Number(row.incentive_count),
+      pending: money(row.total_pending),
+      paid: money(row.total_paid),
+    }));
+  }
+
   /**
    * Everything the home screen needs, in as few round trips as it takes.
    *

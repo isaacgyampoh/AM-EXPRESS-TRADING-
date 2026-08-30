@@ -6,6 +6,7 @@ import { GetProduct } from "@/application/use-cases/get-product";
 import {
   GetDashboard,
   GetExpenseReport,
+  GetIncentiveReport,
   GetInventoryReport,
   GetProfitReport,
   GetSalesReport,
@@ -214,6 +215,7 @@ export async function getUseCases() {
     getSalesReport: new GetSalesReport(repos.reports),
     getInventoryReport: new GetInventoryReport(repos.reports, repos.inventory),
     getExpenseReport: new GetExpenseReport(repos.reports),
+    getIncentiveReport: new GetIncentiveReport(repos.reports),
     getProfitReport: new GetProfitReport(repos.reports),
   };
 }

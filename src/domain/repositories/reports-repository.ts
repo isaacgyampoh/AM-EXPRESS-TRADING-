@@ -116,5 +116,22 @@ export interface ReportsRepository {
   expenseSummary(range: DateRange): Promise<ExpenseSummary>;
   inventoryValuation(): Promise<InventoryValuation>;
   profitability(range: DateRange): Promise<ProfitabilitySummary>;
+
+  /**
+   * Incentives owed and paid in a period, per staff member.
+   *
+   * Reported beside expenses, never inside them: an admin who pays a bonus
+   * usually records the payment in the cash book as well, and folding these
+   * into the expense total would count it twice.
+   */
+  staffIncentives(range: DateRange): Promise<IncentiveSummaryRow[]>;
   dashboard(range: DateRange): Promise<DashboardSnapshot>;
+}
+
+export interface IncentiveSummaryRow {
+  readonly staffId: StaffId;
+  readonly staffName: string;
+  readonly count: number;
+  readonly pending: Money;
+  readonly paid: Money;
 }
