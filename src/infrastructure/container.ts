@@ -27,6 +27,13 @@ import {
   SetIncentiveStatus,
 } from "@/application/use-cases/manage-incentives";
 import {
+  CreateSupplier,
+  ListSuppliers,
+  ListSupplierInvoices,
+  RecordSupplierInvoice,
+  SetSupplierActive,
+} from "@/application/use-cases/manage-suppliers";
+import {
   CreateExpense,
   CreateExpenseCategory,
   DeleteExpense,
@@ -66,6 +73,7 @@ import { SupabaseSalesRepository } from "./supabase/repositories/supabase-sales-
 import { SupabaseSettingsRepository } from "./supabase/repositories/supabase-settings-repository";
 import { SupabaseStaffRepository } from "./supabase/repositories/supabase-staff-repository";
 import { SupabaseIncentiveRepository } from "./supabase/repositories/supabase-incentive-repository";
+import { SupabaseSupplierRepository } from "./supabase/repositories/supabase-supplier-repository";
 import { SupabaseUnitRepository } from "./supabase/repositories/supabase-unit-repository";
 
 /**
@@ -95,6 +103,7 @@ export async function repositories() {
     reports: new SupabaseReportsRepository(client),
     units: new SupabaseUnitRepository(client),
     incentives: new SupabaseIncentiveRepository(client),
+    suppliers: new SupabaseSupplierRepository(client),
   };
 }
 
@@ -188,6 +197,13 @@ export async function getUseCases() {
     listIncentives: new ListIncentives(repos.incentives),
     createIncentive: new CreateIncentive(repos.incentives),
     setIncentiveStatus: new SetIncentiveStatus(repos.incentives),
+
+    // Suppliers
+    listSuppliers: new ListSuppliers(repos.suppliers),
+    createSupplier: new CreateSupplier(repos.suppliers),
+    setSupplierActive: new SetSupplierActive(repos.suppliers),
+    listSupplierInvoices: new ListSupplierInvoices(repos.suppliers),
+    recordSupplierInvoice: new RecordSupplierInvoice(repos.suppliers),
 
     // Settings
     getBusinessSettings: new GetBusinessSettings(repos.settings),

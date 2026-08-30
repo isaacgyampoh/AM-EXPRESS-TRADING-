@@ -136,6 +136,80 @@ export interface Database {
         ];
       };
 
+      suppliers: {
+        Row: {
+          id: string;
+          name: string;
+          phone: string | null;
+          email: string | null;
+          address: string | null;
+          notes: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          is_active?: boolean;
+        };
+        Update: {
+          name?: string;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
+
+      supplier_invoices: {
+        Row: {
+          id: string;
+          supplier_id: string;
+          invoice_number: string;
+          invoice_date: string;
+          amount: NumericRead;
+          description: string | null;
+          /** Object key in the private bucket, never a URL. */
+          storage_path: string;
+          file_type: string | null;
+          uploaded_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          supplier_id: string;
+          invoice_number: string;
+          invoice_date: string;
+          amount: NumericWrite;
+          description?: string | null;
+          storage_path: string;
+          file_type?: string | null;
+          uploaded_by: string;
+        };
+        Update: {
+          invoice_number?: string;
+          invoice_date?: string;
+          amount?: NumericWrite;
+          description?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "supplier_invoices_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
       staff_incentives: {
         Row: {
           id: string;

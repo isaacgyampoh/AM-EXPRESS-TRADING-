@@ -1144,5 +1144,83 @@ $$;
 reset role;
 select set_config('request.jwt.claims', '', false);
 
+
+-- -----------------------------------------------------------------------------
+-- Suppliers and their invoices are admin-only
+-- -----------------------------------------------------------------------------
+-- An invoice shows what the business pays for stock. That is the margin on
+-- everything a cashier sells, and the business's position with its own
+-- suppliers. It is the one number they must not be able to read.
+insert into public.suppliers (id, name, phone)
+values ('cccccccc-0000-4000-8000-000000000001', 'Kofi Traders', '024 000 0000');
+
+insert into public.supplier_invoices
+  (supplier_id, invoice_number, invoice_date, amount, storage_path, uploaded_by)
+values
+  ('cccccccc-0000-4000-8000-000000000001', 'INV-001', '2026-08-15', 4200.00,
+   'cccccccc-0000-4000-8000-000000000001/doc.pdf',
+   '11111111-1111-4111-8111-111111111111');
+
+select set_config('request.jwt.claims', json_build_object('sub', :plain_staff, 'role', 'authenticated')::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from public.suppliers) = 0,
+    'a cashier cannot read the supplier list'
+  );
+  perform pg_temp.ok(
+    (select count(*) from public.supplier_invoices) = 0,
+    'a cashier cannot read what stock costs'
+  );
+
+  begin
+    insert into public.suppliers (name) values ('My own supplier');
+    raise exception 'FAIL a cashier created a supplier';
+  exception when insufficient_privilege then
+    raise notice 'ok   a cashier cannot create a supplier';
+  end;
+end;
+$$;
+
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', :admin_id, 'role', 'authenticated')::text, false);
+set role authenticated;
+
+do $$
+begin
+  perform pg_temp.ok(
+    (select count(*) from public.supplier_invoices) = 1,
+    'an admin reads supplier invoices'
+  );
+
+  -- The same invoice number twice from one supplier is the check that catches
+  -- a document uploaded, and paid, a second time.
+  begin
+    insert into public.supplier_invoices
+      (supplier_id, invoice_number, invoice_date, amount, storage_path, uploaded_by)
+    values ('cccccccc-0000-4000-8000-000000000001', 'INV-001', '2026-08-16', 99.00,
+            'x/y.pdf', '11111111-1111-4111-8111-111111111111');
+    raise exception 'FAIL the same invoice number was recorded twice';
+  exception when unique_violation then
+    raise notice 'ok   the same invoice number cannot be recorded twice for one supplier';
+  end;
+
+  -- A supplier with invoices against them cannot be deleted out from under
+  -- the record.
+  begin
+    delete from public.suppliers where id = 'cccccccc-0000-4000-8000-000000000001';
+    raise exception 'FAIL a supplier with invoices was deleted';
+  exception when foreign_key_violation then
+    raise notice 'ok   a supplier with invoices cannot be deleted';
+  end;
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', false);
+
 \echo ''
 \echo 'All database behaviour tests passed.'
