@@ -92,6 +92,11 @@ export default async function DashboardLayout({
   });
   if (staff.can("settings:write")) {
     secondaryNav.push({
+      href: "/suppliers",
+      label: "Suppliers",
+      icon: <BoxIcon />,
+    });
+    secondaryNav.push({
       href: "/settings",
       label: "Settings",
       icon: <SettingsIcon />,
