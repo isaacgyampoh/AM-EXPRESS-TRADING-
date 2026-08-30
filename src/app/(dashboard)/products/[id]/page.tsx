@@ -9,9 +9,11 @@ import { Money } from "@/presentation/components/settings-provider";
 import { StockBadge } from "@/presentation/components/ui/badge";
 import { linkButtonClasses } from "@/presentation/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/presentation/components/ui/card";
+import { AddProductUnitForm } from "@/presentation/forms/add-product-unit-form";
 import { ProductForm } from "@/presentation/forms/product-form";
 import { StockControls } from "@/presentation/forms/stock-forms";
 import {
+  addProductUnitAction,
   addStockAction,
   adjustStockAction,
   updateProductAction,
@@ -93,17 +95,60 @@ export default async function ProductPage({
         </Card>
 
         <Card>
-          <CardHeader title="Price" />
-          <CardBody>
-            <dl className="grid grid-cols-2 gap-4">
+          <CardHeader
+            title="Prices"
+            description={
+              product.units.length > 1
+                ? `Sold ${product.units.length} ways. Each has its own prices.`
+                : undefined
+            }
+          />
+          <CardBody className="flex flex-col gap-5">
+            {/* One row per selling unit. Nothing here is calculated from
+                anything else on the screen — every figure was typed in. */}
+            <ul className="flex flex-col divide-y divide-[var(--border)]">
+              {product.units.map((unit) => (
+                <li
+                  key={unit.id}
+                  className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0"
+                >
+                  <span className="font-medium">
+                    {unit.unitName}
+                    {unit.baseQuantity > 1 && (
+                      <span className="text-[var(--text-muted)] font-normal">
+                        {" "}
+                        · {unit.baseQuantity} per{" "}
+                        {product.units.find((u) => u.baseQuantity === 1)
+                          ?.unitName.toLowerCase() ?? "unit"}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-right numeric">
+                    <span className="font-semibold">
+                      <Money amount={unit.retailPrice} />
+                    </span>
+                    <span className="block text-sm text-[var(--text-muted)]">
+                      {unit.wholesalePrice ? (
+                        <>
+                          <Money amount={unit.wholesalePrice} /> wholesale
+                        </>
+                      ) : (
+                        "retail only"
+                      )}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <dl className="grid grid-cols-2 gap-4 border-t border-[var(--border)] pt-4">
               <div>
-                <dt className="text-sm text-[var(--text-muted)]">Selling for</dt>
-                <dd className="text-lg font-semibold mt-0.5">
-                  <Money amount={product.sellingPrice} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-[var(--text-muted)]">Cost</dt>
+                <dt className="text-sm text-[var(--text-muted)]">
+                  Cost per{" "}
+                  {product.units
+                    .find((u) => u.baseQuantity === 1)
+                    ?.unitName.toLowerCase() ?? "unit"}
+                </dt>
                 <dd className="text-lg font-semibold mt-0.5">
                   {product.costPrice ? (
                     <Money amount={product.costPrice} />
@@ -134,6 +179,21 @@ export default async function ProductPage({
             )}
           </CardBody>
         </Card>
+
+        {canManage && (
+          <Card>
+            <CardHeader
+              title="Add another way to sell this"
+              description="A Box of these, say. It gets its own prices — nothing is worked out from the price above."
+            />
+            <CardBody>
+              <AddProductUnitForm
+                action={addProductUnitAction}
+                product={product}
+              />
+            </CardBody>
+          </Card>
+        )}
 
         {canManage && (
           <Card>

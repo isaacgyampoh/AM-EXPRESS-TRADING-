@@ -1,5 +1,6 @@
 import { InventoryItem } from "@/domain/entities/inventory-item";
 import { Product } from "@/domain/entities/product";
+import type { ProductUnit } from "@/domain/entities/product-unit";
 import { Staff } from "@/domain/entities/staff";
 import {
   asCategoryId,
@@ -29,9 +30,11 @@ export function aProduct(
     costPrice: string | null;
     minimumStock: number;
     isActive: boolean;
+    units: readonly ProductUnit[];
   }> = {},
 ): Product {
   return Product.create({
+    units: overrides.units,
     id: asProductId(overrides.id ?? nextId()),
     sku: Sku.of(overrides.sku ?? `SKU-${counter}`),
     name: overrides.name ?? "Bag of Rice 5kg",

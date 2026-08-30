@@ -6,6 +6,7 @@ import type { Product } from "@/domain/entities/product";
 import type {
   CategoryRepository,
   NewProduct,
+  NewProductUnit,
   ProductChanges,
   ProductFilter,
   ProductRepository,
@@ -203,6 +204,25 @@ export class SupabaseProductRepository implements ProductRepository {
     if (!data) throw new NotFoundError("Product", id);
 
     return toProduct(data);
+  }
+
+  async addUnit(productId: ProductId, unit: NewProductUnit): Promise<Product> {
+    // Goes through the function rather than an insert so the admin check and
+    // the "a unit must carry its own price" rule live in one place, next to
+    // the data, where a second client cannot skip them.
+    const { error } = await this.client.rpc("add_product_unit", {
+      p_product_id: productId,
+      p_unit_name: unit.unitName,
+      p_base_quantity: unit.baseQuantity,
+      p_retail_price: unit.retailPrice.toDecimalString(),
+      p_wholesale_price: unit.wholesalePrice?.toDecimalString() ?? null,
+    });
+
+    if (error) throw mapDatabaseError(error, { resource: "Selling unit" });
+
+    const updated = await this.findById(productId);
+    if (!updated) throw new NotFoundError("Product", productId);
+    return updated;
   }
 
   async skuExists(sku: Sku, excludingId?: ProductId): Promise<boolean> {

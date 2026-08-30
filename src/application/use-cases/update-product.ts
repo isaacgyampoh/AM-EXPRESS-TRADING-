@@ -11,6 +11,7 @@ import { Money } from "@/domain/value-objects/money";
 import { Sku } from "@/domain/value-objects/sku";
 import { toProductDto, type ProductDto } from "../dto/product-dto";
 import {
+  addProductUnitSchema,
   parseOrThrow,
   updateProductSchema,
   type UpdateProductInput,
@@ -102,5 +103,49 @@ export class UpdateProduct {
     const stock = await this.inventory.findByProductId(id);
 
     return toProductDto(updated, stock ?? undefined, categoryName);
+  }
+}
+
+
+/**
+ * Adds another way to sell a product that already exists.
+ *
+ * This is what makes a Box possible: the product keeps its Pieces, and gains
+ * a Box that holds twelve of them at a price somebody typed in. The price is
+ * not derived from the Piece price, and the database refuses a unit without
+ * one, so there is no path by which a Box gets an invented price.
+ */
+export class AddProductUnit {
+  constructor(private readonly products: ProductRepository) {}
+
+  // `unknown` because the caller is a server action handing over raw form
+  // values; parseOrThrow is what turns them into something trustworthy.
+  async execute(actor: Staff, input: unknown): Promise<ProductDto> {
+    actor.assertCan("product:write");
+
+    const data = parseOrThrow(addProductUnitSchema, input);
+    const productId = asProductId(data.productId);
+
+    const existing = await this.products.findById(productId);
+    if (!existing) throw new NotFoundError("Product", data.productId);
+
+    if (existing.units.some((unit) => unit.unitName === data.unitName)) {
+      throw new ConflictError(
+        `${existing.name} is already sold by the ${data.unitName}.`,
+        { unitName: data.unitName },
+      );
+    }
+
+    const product = await this.products.addUnit(productId, {
+      unitName: data.unitName,
+      baseQuantity: data.baseQuantity,
+      retailPrice: Money.fromDecimalString(data.retailPrice),
+      wholesalePrice:
+        data.wholesalePrice && data.wholesalePrice !== ""
+          ? Money.fromDecimalString(data.wholesalePrice)
+          : null,
+    });
+
+    return toProductDto(product, undefined, null);
   }
 }

@@ -66,6 +66,30 @@ export async function updateProductAction(
   });
 }
 
+/**
+ * Adds another way to sell a product — a Box of the Pieces already stocked.
+ *
+ * Its own action rather than part of updateProductAction because it is not an
+ * edit to the product: the product is unchanged and gains a price list entry,
+ * with prices of its own that nothing derives.
+ */
+export async function addProductUnitAction(
+  _previous: ActionResult<ProductDto> | null,
+  formData: FormData,
+): Promise<ActionResult<ProductDto>> {
+  return attempt(async () => {
+    const staff = await requireStaff();
+    const cases = await getUseCases();
+
+    const result = await cases.addProductUnit.execute(staff, formValues(formData));
+
+    revalidatePath("/products");
+    revalidatePath(`/products/${result.id}`);
+    revalidatePath("/pos");
+    return result;
+  });
+}
+
 export async function addStockAction(
   _previous: ActionResult<StockLevelDto> | null,
   formData: FormData,

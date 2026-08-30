@@ -37,6 +37,16 @@ export interface NewProduct {
   readonly wholesalePrice?: Money | null;
 }
 
+/** A further way to sell a product that already exists. */
+export interface NewProductUnit {
+  readonly unitName: string;
+  /** How many base units one of these holds. A Box of twelve is 12. */
+  readonly baseQuantity: number;
+  readonly retailPrice: Money;
+  /** Null when this unit is not sold wholesale. Never inferred. */
+  readonly wholesalePrice: Money | null;
+}
+
 export interface ProductChanges {
   readonly sku?: Sku;
   readonly name?: string;
@@ -68,6 +78,15 @@ export interface ProductRepository {
   create(product: NewProduct): Promise<Product>;
   update(id: ProductId, changes: ProductChanges): Promise<Product>;
   skuExists(sku: Sku, excludingId?: ProductId): Promise<boolean>;
+
+  /**
+   * Adds another selling unit to an existing product.
+   *
+   * Separate from `update` because it is not an edit to the product — the
+   * product is unchanged. It is a new price list entry, and it has its own
+   * prices which nothing derives.
+   */
+  addUnit(productId: ProductId, unit: NewProductUnit): Promise<Product>;
 }
 
 export interface CategoryRepository {

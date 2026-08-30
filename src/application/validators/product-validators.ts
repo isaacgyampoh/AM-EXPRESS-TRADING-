@@ -109,3 +109,25 @@ export function parseOrThrow<Schema extends z.ZodType>(
     { fieldErrors },
   );
 }
+
+/**
+ * A second way to sell an existing product — a Box of the Pieces already in
+ * the catalogue.
+ *
+ * `retailPrice` is required and `wholesalePrice` is optional, exactly as when
+ * the product was created. Neither is ever computed from the base unit's
+ * price: a Box that costs less per item than twelve Pieces is the entire
+ * reason a customer buys one.
+ */
+export const addProductUnitSchema = z.object({
+  productId: z.uuid(),
+  unitName: z.string().trim().min(1, "Choose a unit").max(30),
+  baseQuantity: z.coerce
+    .number()
+    .int("Enter a whole number")
+    .min(1, "One of these must hold at least one base unit"),
+  retailPrice: decimalAmount,
+  wholesalePrice: optionalDecimalAmount,
+});
+
+export type AddProductUnitInput = z.input<typeof addProductUnitSchema>;
