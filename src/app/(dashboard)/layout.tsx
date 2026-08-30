@@ -84,6 +84,12 @@ export default async function DashboardLayout({
   if (staff.can("staff:read")) {
     secondaryNav.push({ href: "/staff", label: "Staff", icon: <PeopleIcon /> });
   }
+  // Everyone gets this one. A cashier sees only their own, by RLS.
+  secondaryNav.push({
+    href: "/incentives",
+    label: staff.can("staff:write") ? "Incentives" : "My incentives",
+    icon: <WalletIcon />,
+  });
   if (staff.can("settings:write")) {
     secondaryNav.push({
       href: "/settings",
