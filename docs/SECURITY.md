@@ -79,6 +79,23 @@ either the old row or the new row but never both:
   including through the SQL editor with RLS bypassed — that is the update which
   locks a business out of its own system, and it is always a mistake
 
+## Nothing talks to Supabase from the browser
+
+There is no browser Supabase client. Every read and write goes through a
+server component, a server action or a route handler, so the anon key is never
+shipped and no query is ever composed where a user can edit it.
+
+This was not always deliberate. A `browser-client.ts` existed for signing in
+and out, was left unused when PIN authentication replaced it, and sat there as
+dead code — an import away from putting `@supabase/ssr` and a live client into
+the browser bundle. It has been deleted. Measuring the deployed bundle confirms
+the result: no `GoTrueClient`, no `SupabaseClient`, no `PostgrestClient` in any
+chunk the browser downloads.
+
+If a future change needs Supabase in the browser, that is a decision worth
+making on purpose rather than by importing a file that happened to be lying
+around.
+
 ## The service role key
 
 It is needed for exactly one operation: creating a staff member's auth
