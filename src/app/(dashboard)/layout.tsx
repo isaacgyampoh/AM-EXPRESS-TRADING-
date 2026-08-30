@@ -63,7 +63,7 @@ export default async function DashboardLayout({
   if (staff.can("product:write")) {
     secondaryNav.push({
       href: "/categories",
-      label: "Categories",
+      label: "Catalogue",
       icon: <BoxIcon />,
     });
   }

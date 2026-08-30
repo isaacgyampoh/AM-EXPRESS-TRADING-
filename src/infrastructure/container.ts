@@ -17,6 +17,11 @@ import {
   UpdateCategory,
 } from "@/application/use-cases/manage-categories";
 import {
+  CreateUnit,
+  ListUnits,
+  SetUnitActive,
+} from "@/application/use-cases/manage-units";
+import {
   CreateExpense,
   CreateExpenseCategory,
   DeleteExpense,
@@ -55,6 +60,7 @@ import { SupabaseReportsRepository } from "./supabase/repositories/supabase-repo
 import { SupabaseSalesRepository } from "./supabase/repositories/supabase-sales-repository";
 import { SupabaseSettingsRepository } from "./supabase/repositories/supabase-settings-repository";
 import { SupabaseStaffRepository } from "./supabase/repositories/supabase-staff-repository";
+import { SupabaseUnitRepository } from "./supabase/repositories/supabase-unit-repository";
 
 /**
  * The composition root.
@@ -81,6 +87,7 @@ export async function repositories() {
     staff: new SupabaseStaffRepository(client),
     expenses: new SupabaseExpenseRepository(client),
     reports: new SupabaseReportsRepository(client),
+    units: new SupabaseUnitRepository(client),
   };
 }
 
@@ -141,6 +148,9 @@ export async function getUseCases() {
     listCategories: new ListCategories(repos.categories),
     createCategory: new CreateCategory(repos.categories),
     updateCategory: new UpdateCategory(repos.categories),
+    listUnits: new ListUnits(repos.units),
+    createUnit: new CreateUnit(repos.units),
+    setUnitActive: new SetUnitActive(repos.units),
     getStockOverview: new GetStockOverview(repos.products, repos.inventory),
     addStock: new AddStock(repos.inventory, repos.products),
     adjustStock: new AdjustStock(repos.inventory, repos.products),

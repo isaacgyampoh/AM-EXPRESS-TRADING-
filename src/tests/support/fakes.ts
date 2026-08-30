@@ -9,8 +9,12 @@ import { Product } from "@/domain/entities/product";
 import { ProductUnit } from "@/domain/entities/product-unit";
 import { Sale, SaleItem } from "@/domain/entities/sale";
 import { Category } from "@/domain/entities/category";
-import { NotFoundError } from "@/domain/errors/domain-error";
+import { ConflictError, NotFoundError } from "@/domain/errors/domain-error";
 import { InsufficientStockError } from "@/domain/errors/business-errors";
+import type {
+  UnitRecord,
+  UnitRepository,
+} from "@/domain/repositories/unit-repository";
 import type {
   InventoryFilter,
   InventoryRepository,
@@ -441,5 +445,32 @@ export class FakeSettingsRepository implements SettingsRepository {
   async update(changes: Parameters<SettingsRepository["update"]>[0]) {
     this.settings = this.settings.withChanges(changes);
     return this.settings;
+  }
+}
+
+/** In-memory units, with the usage counts a test sets up explicitly. */
+export class FakeUnitRepository implements UnitRepository {
+  constructor(private readonly units: UnitRecord[] = []) {}
+
+  async list(): Promise<UnitRecord[]> {
+    return this.units;
+  }
+
+  async create(name: string): Promise<UnitRecord> {
+    if (this.units.some((unit) => unit.name === name)) {
+      throw new ConflictError(`There is already a unit called ${name}.`, { name });
+    }
+    const created = { name, isActive: true, usageCount: 0 };
+    this.units.push(created);
+    return created;
+  }
+
+  async setActive(name: string, isActive: boolean): Promise<UnitRecord> {
+    const index = this.units.findIndex((unit) => unit.name === name);
+    if (index === -1) throw new NotFoundError("Unit", name);
+
+    const updated = { ...this.units[index], isActive };
+    this.units[index] = updated;
+    return updated;
   }
 }

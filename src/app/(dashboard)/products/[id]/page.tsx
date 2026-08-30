@@ -43,6 +43,14 @@ export default async function ProductPage({
   const canManage = staff.can("product:write");
   const canAdjust = staff.can("inventory:adjust");
 
+  // Only units still in use are offered for a new pack size. A retired unit
+  // stays valid for products already priced in it.
+  const unitNames = canManage
+    ? (await cases.listUnits.execute(staff))
+        .filter((unit) => unit.isActive)
+        .map((unit) => unit.name)
+    : [];
+
   return (
     <>
       <PageHeader
@@ -190,6 +198,7 @@ export default async function ProductPage({
               <AddProductUnitForm
                 action={addProductUnitAction}
                 product={product}
+                units={unitNames}
               />
             </CardBody>
           </Card>
