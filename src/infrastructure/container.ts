@@ -31,7 +31,7 @@ import {
 } from "@/application/use-cases/manage-settings";
 import { AddStock, AdjustStock } from "@/application/use-cases/manage-stock";
 import { ChangeOwnPin, LoginWithPin } from "@/application/use-cases/pin-auth";
-import { UpdateProduct } from "@/application/use-cases/update-product";
+import { AddProductUnit, UpdateProduct } from "@/application/use-cases/update-product";
 import {
   GenerateReceipt,
   GetSale,
@@ -127,6 +127,7 @@ export async function getUseCases() {
       repos.categories,
       repos.inventory,
     ),
+    addProductUnit: new AddProductUnit(repos.products),
     getProduct: new GetProduct(repos.products, repos.inventory, repos.categories),
     listProducts: new ListProducts(
       repos.products,

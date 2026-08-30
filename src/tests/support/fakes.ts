@@ -4,7 +4,8 @@ import { asPaymentId, asSaleId, asSaleItemId } from "@/domain/entities/identifie
 import type { InventoryItem } from "@/domain/entities/inventory-item";
 import type { InventoryMovement } from "@/domain/entities/inventory-movement";
 import { Payment } from "@/domain/entities/payment";
-import type { Product } from "@/domain/entities/product";
+import { Product } from "@/domain/entities/product";
+import { ProductUnit } from "@/domain/entities/product-unit";
 import { Sale, SaleItem } from "@/domain/entities/sale";
 import type { Category } from "@/domain/entities/category";
 import { NotFoundError } from "@/domain/errors/domain-error";
@@ -19,6 +20,7 @@ import type {
 import type {
   CategoryRepository,
   NewProduct,
+  NewProductUnit,
   ProductChanges,
   ProductFilter,
   ProductRepository,
@@ -52,6 +54,8 @@ const nextId = () =>
 
 export class FakeProductRepository implements ProductRepository {
   readonly items = new Map<ProductId, Product>();
+  /** Units added through addUnit, so a test can assert what was asked for. */
+  readonly addedUnits: { productId: ProductId; unit: NewProductUnit }[] = [];
 
   constructor(products: readonly Product[] = []) {
     for (const product of products) this.items.set(product.id, product);
@@ -121,6 +125,40 @@ export class FakeProductRepository implements ProductRepository {
     return [...this.items.values()].some(
       (product) => product.sku.equals(sku) && product.id !== excludingId,
     );
+  }
+
+  async addUnit(productId: ProductId, unit: NewProductUnit): Promise<Product> {
+    const product = this.items.get(productId);
+    if (!product) throw new NotFoundError("Product", productId);
+
+    this.addedUnits.push({ productId, unit });
+
+    const added = ProductUnit.create({
+      id: `unit-${this.addedUnits.length}`,
+      unitName: unit.unitName,
+      baseQuantity: unit.baseQuantity,
+      retailPrice: unit.retailPrice,
+      wholesalePrice: unit.wholesalePrice,
+      isDefault: false,
+      isActive: true,
+    });
+
+    const updated = Product.create({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      categoryId: product.categoryId,
+      sellingPrice: product.sellingPrice,
+      costPrice: product.costPrice,
+      minimumStock: product.minimumStock,
+      isActive: product.isActive,
+      createdAt: product.createdAt,
+      updatedAt: new Date(),
+      units: [...product.units, added],
+    });
+
+    this.items.set(productId, updated);
+    return updated;
   }
 }
 
