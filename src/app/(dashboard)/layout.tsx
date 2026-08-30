@@ -60,6 +60,13 @@ export default async function DashboardLayout({
   // these sit behind "More"; the desktop rail has room to show them outright.
   const secondaryNav: NavItem[] = [];
 
+  if (staff.can("product:write")) {
+    secondaryNav.push({
+      href: "/categories",
+      label: "Categories",
+      icon: <BoxIcon />,
+    });
+  }
   if (staff.can("report:sales")) {
     secondaryNav.push({
       href: "/reports",

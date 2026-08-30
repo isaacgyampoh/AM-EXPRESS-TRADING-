@@ -13,6 +13,10 @@ import {
 import { GetStockOverview } from "@/application/use-cases/get-stock-overview";
 import { ListCategories, ListProducts } from "@/application/use-cases/list-products";
 import {
+  CreateCategory,
+  UpdateCategory,
+} from "@/application/use-cases/manage-categories";
+import {
   CreateExpense,
   CreateExpenseCategory,
   DeleteExpense,
@@ -135,6 +139,8 @@ export async function getUseCases() {
       repos.categories,
     ),
     listCategories: new ListCategories(repos.categories),
+    createCategory: new CreateCategory(repos.categories),
+    updateCategory: new UpdateCategory(repos.categories),
     getStockOverview: new GetStockOverview(repos.products, repos.inventory),
     addStock: new AddStock(repos.inventory, repos.products),
     adjustStock: new AdjustStock(repos.inventory, repos.products),
