@@ -29,6 +29,20 @@ const UNIT_OPTIONS = [
 ] as const;
 
 /**
+ * Enough pluralisation for the units this system has.
+ *
+ * Every name in the `units` table takes a plain "s" — pieces, boxes is
+ * "boxs"… which is why the sibilant case is handled too. Not a general English
+ * pluraliser, and it does not need to be: the vocabulary is a short list an
+ * admin picks from, and "How many piece in one Box" reads like a machine
+ * wrote it.
+ */
+function plural(unit: string): string {
+  if (/(s|x|z|ch|sh)$/i.test(unit)) return `${unit}es`;
+  return `${unit}s`;
+}
+
+/**
  * Adds another way to sell a product that already exists.
  *
  * The two numbers that matter are side by side and both are typed in: how many
@@ -106,7 +120,7 @@ export function AddProductUnitForm({
         />
 
         <QuantityInput
-          label={`How many ${baseUnitName?.toLowerCase() ?? "base units"} in one ${unitName || "unit"}`}
+          label={`How many ${plural(baseUnitName?.toLowerCase() ?? "base unit")} in one ${unitName || "unit"}`}
           name="baseQuantity"
           value={baseQuantity}
           onChange={(e) => setBaseQuantity(e.target.value)}

@@ -1,13 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { BusinessSettings } from "@/domain/entities/business-settings";
 import type { ProductId, SaleId } from "@/domain/entities/identifiers";
-import { asPaymentId, asSaleId, asSaleItemId } from "@/domain/entities/identifiers";
+import { asCategoryId, asPaymentId, asSaleId, asSaleItemId } from "@/domain/entities/identifiers";
 import type { InventoryItem } from "@/domain/entities/inventory-item";
 import type { InventoryMovement } from "@/domain/entities/inventory-movement";
 import { Payment } from "@/domain/entities/payment";
 import { Product } from "@/domain/entities/product";
 import { ProductUnit } from "@/domain/entities/product-unit";
 import { Sale, SaleItem } from "@/domain/entities/sale";
-import type { Category } from "@/domain/entities/category";
+import { Category } from "@/domain/entities/category";
 import { NotFoundError } from "@/domain/errors/domain-error";
 import { InsufficientStockError } from "@/domain/errors/business-errors";
 import type {
@@ -171,12 +172,42 @@ export class FakeCategoryRepository implements CategoryRepository {
   async list() {
     return this.categories;
   }
-  async create(): Promise<Category> {
-    throw new Error("not needed in these tests");
+  async create(name: string, description: string | null): Promise<Category> {
+    const category = Category.create({
+      // A real uuid, because the validators check the shape of an id and a
+      // fake that hands back "cat-1" would pass tests the app would fail.
+      id: asCategoryId(randomUUID()),
+      name,
+      description,
+      isActive: true,
+      createdAt: new Date(),
+    });
+    this.categories.push(category);
+    return category;
   }
-  async update(): Promise<Category> {
-    throw new Error("not needed in these tests");
+
+  async update(
+    id: string,
+    changes: { name?: string; description?: string | null; isActive?: boolean },
+  ): Promise<Category> {
+    const index = this.categories.findIndex((category) => category.id === id);
+    if (index === -1) throw new NotFoundError("Category", id);
+
+    const current = this.categories[index];
+    const updated = Category.create({
+      id: current.id,
+      name: changes.name ?? current.name,
+      description:
+        changes.description !== undefined
+          ? changes.description
+          : current.description,
+      isActive: changes.isActive ?? current.isActive,
+      createdAt: current.createdAt,
+    });
+    this.categories[index] = updated;
+    return updated;
   }
+
   async nameExists() {
     return false;
   }
