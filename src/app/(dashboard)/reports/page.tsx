@@ -67,12 +67,15 @@ async function ReportBody({
 
   const isAdmin = staff.can("report:sales");
 
-  const [sales, profit, inventory] = await Promise.all([
+  const [sales, profit, inventory, incentives] = await Promise.all([
     cases.getSalesReport.execute(staff, range),
     isAdmin ? cases.getProfitReport.execute(staff, range) : Promise.resolve(null),
     isAdmin
       ? cases.getInventoryReport.execute(staff, range)
       : Promise.resolve(null),
+    isAdmin
+      ? cases.getIncentiveReport.execute(staff, range)
+      : Promise.resolve([]),
   ]);
 
   const { summary } = sales;
@@ -310,6 +313,40 @@ async function ReportBody({
                 </ul>
               </div>
             )}
+          </CardBody>
+        </Card>
+      )}
+
+      {isAdmin && incentives.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Staff incentives"
+            description="Listed beside expenses, not inside them. Recording the payment in the cash book as well is what puts it into profit — doing it here too would count it twice."
+          />
+          <CardBody>
+            <ul className="flex flex-col divide-y divide-[var(--border)]">
+              {incentives.map((row) => (
+                <li
+                  key={row.staffId}
+                  className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium">{row.staffName}</span>
+                    <span className="block text-xs text-[var(--text-muted)]">
+                      {row.count} {row.count === 1 ? "record" : "records"}
+                    </span>
+                  </span>
+                  <span className="text-right numeric">
+                    <span className="font-semibold">
+                      <Money amount={row.paid} /> paid
+                    </span>
+                    <span className="block text-sm text-[var(--text-muted)]">
+                      <Money amount={row.pending} /> pending
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardBody>
         </Card>
       )}

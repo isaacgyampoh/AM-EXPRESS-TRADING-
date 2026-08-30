@@ -213,3 +213,30 @@ export class GetDashboard {
     };
   }
 }
+
+
+/**
+ * Incentives for a period, per staff member.
+ *
+ * Kept as its own report rather than a line inside the expense report. An
+ * incentive is money going out, but it is not an expense row — see the
+ * staff_incentives migration for why folding the two together would
+ * double-count every bonus the shop also writes in its cash book.
+ */
+export class GetIncentiveReport {
+  constructor(private readonly reports: ReportsRepository) {}
+
+  async execute(actor: Staff, range: DateRange) {
+    actor.assertCan("report:sales");
+
+    const rows = await this.reports.staffIncentives(range);
+
+    return rows.map((row) => ({
+      staffId: row.staffId as string,
+      staffName: row.staffName,
+      count: row.count,
+      pending: row.pending.toDecimalString(),
+      paid: row.paid.toDecimalString(),
+    }));
+  }
+}
