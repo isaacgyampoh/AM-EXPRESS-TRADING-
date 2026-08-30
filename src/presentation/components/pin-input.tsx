@@ -106,11 +106,15 @@ export function PinInput({
                   "size-14 rounded-xl border bg-[var(--surface-raised)]",
                   "text-xl font-semibold tabular-nums",
                   "transition-colors duration-100",
-                  filled
-                    ? "border-[var(--border)]"
-                    : "border-[var(--border)] text-transparent",
-                  active && "border-brand-600 ring-2 ring-brand-600/20",
-                  invalid && "border-red-500",
+                  // One branch per state rather than layered overrides: a red
+                  // border with a green focus ring around it is what happens
+                  // when "invalid" is painted on top of "active", and it reads
+                  // as neither.
+                  invalid
+                    ? cn("border-red-500", active && "ring-2 ring-red-500/20")
+                    : active
+                      ? "border-brand-600 ring-2 ring-brand-600/20"
+                      : "border-[var(--border)]",
                   disabled && "opacity-60",
                 )}
               >
