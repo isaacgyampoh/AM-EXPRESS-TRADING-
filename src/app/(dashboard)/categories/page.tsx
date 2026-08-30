@@ -8,9 +8,15 @@ import {
   CategoryRow,
   CreateCategoryForm,
 } from "@/presentation/forms/category-forms";
-import { createCategoryAction, updateCategoryAction } from "./actions";
+import { CreateUnitForm, UnitRow } from "@/presentation/forms/unit-forms";
+import {
+  createCategoryAction,
+  createUnitAction,
+  setUnitActiveAction,
+  updateCategoryAction,
+} from "./actions";
 
-export const metadata: Metadata = { title: "Categories" };
+export const metadata: Metadata = { title: "Catalogue setup" };
 
 /**
  * Categories.
@@ -27,17 +33,18 @@ export default async function CategoriesPage() {
   staff.assertCan("product:write");
 
   const cases = await getUseCases();
-  const categories = await cases.listCategories.execute(staff, {
-    activeOnly: false,
-  });
+  const [categories, units] = await Promise.all([
+    cases.listCategories.execute(staff, { activeOnly: false }),
+    cases.listUnits.execute(staff),
+  ]);
 
   const active = categories.filter((category) => category.isActive);
 
   return (
     <>
       <PageHeader
-        title="Categories"
-        description="How products are grouped in the till and in reports."
+        title="Catalogue setup"
+        description="The words your catalogue uses: how products are grouped, and how they are sold and counted."
       />
 
       <div className="flex flex-col gap-5">
@@ -78,6 +85,25 @@ export default async function CategoriesPage() {
                 ))}
               </ul>
             )}
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader
+            title="Units"
+            description="How products are sold and counted — by the Piece, the Box, the Crate."
+          />
+          <CardBody className="flex flex-col gap-5">
+            <CreateUnitForm action={createUnitAction} />
+
+            <ul className="flex flex-col divide-y divide-[var(--border)] border-t border-[var(--border)] pt-1">
+              {units.map((unit) => (
+                <UnitRow
+                  key={unit.name}
+                  unit={unit}
+                  action={setUnitActiveAction}
+                />
+              ))}
+            </ul>
           </CardBody>
         </Card>
       </div>

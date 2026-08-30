@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { CategoryDto } from "@/application/dto/product-dto";
+import type { UnitRecord } from "@/domain/repositories/unit-repository";
 import { attempt, type ActionResult } from "@/application/services/result";
 import { requireStaff } from "@/infrastructure/auth/session";
 import { getUseCases } from "@/infrastructure/container";
@@ -54,6 +55,34 @@ export async function updateCategoryAction(
     const cases = await getUseCases();
 
     const result = await cases.updateCategory.execute(staff, formValues(formData));
+    revalidateCategoryViews();
+    return result;
+  });
+}
+
+export async function createUnitAction(
+  _previous: ActionResult<UnitRecord> | null,
+  formData: FormData,
+): Promise<ActionResult<UnitRecord>> {
+  return attempt(async () => {
+    const staff = await requireStaff();
+    const cases = await getUseCases();
+
+    const result = await cases.createUnit.execute(staff, formValues(formData));
+    revalidateCategoryViews();
+    return result;
+  });
+}
+
+export async function setUnitActiveAction(
+  _previous: ActionResult<UnitRecord> | null,
+  formData: FormData,
+): Promise<ActionResult<UnitRecord>> {
+  return attempt(async () => {
+    const staff = await requireStaff();
+    const cases = await getUseCases();
+
+    const result = await cases.setUnitActive.execute(staff, formValues(formData));
     revalidateCategoryViews();
     return result;
   });

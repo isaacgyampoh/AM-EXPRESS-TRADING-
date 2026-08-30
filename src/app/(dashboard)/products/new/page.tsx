@@ -37,9 +37,14 @@ export default async function NewProductPage() {
   }
 
   const cases = await getUseCases();
-  const categories = await cases.listCategories.execute(staff, {
-    activeOnly: true,
-  });
+  const [categories, units] = await Promise.all([
+    cases.listCategories.execute(staff, { activeOnly: true }),
+    cases.listUnits.execute(staff),
+  ]);
+
+  // Only units still in use are offered. A retired one stays valid for
+  // products already priced in it; it just stops being suggested for new ones.
+  const unitNames = units.filter((unit) => unit.isActive).map((unit) => unit.name);
 
   return (
     <>
@@ -51,6 +56,7 @@ export default async function NewProductPage() {
       <div className="px-4 md:px-6 pb-10 max-w-2xl">
         <Card className="p-5">
           <ProductForm
+            units={unitNames}
             action={createProductAction}
             categories={categories}
             submitLabel="Add product"
