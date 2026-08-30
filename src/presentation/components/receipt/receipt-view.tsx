@@ -28,6 +28,10 @@ export function ReceiptView({
   return (
     <article
       className={cn(
+        // `receipt-body` is the hook the paper-size rules target: the printed
+        // width has to match the roll, and 380px of screen layout on a 58mm
+        // roll wraps every product name onto three lines.
+        "receipt-body",
         "mx-auto w-full max-w-[380px] bg-white text-black",
         "rounded-2xl border border-[var(--border)] p-5",
         "print:max-w-none print:rounded-none print:border-0 print:p-0",
