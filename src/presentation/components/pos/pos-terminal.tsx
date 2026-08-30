@@ -13,6 +13,7 @@ import { useOnlineStatus } from "../../hooks/use-online-status";
 import { useSettings } from "../settings-provider";
 import { Button } from "../ui/button";
 import { SearchInput } from "../ui/search-input";
+import { useBarcodeScanner } from "@/presentation/hooks/use-barcode-scanner";
 import { Sheet } from "../ui/sheet";
 import { EmptyState } from "../ui/states";
 import { useToast } from "../ui/toast";
@@ -106,6 +107,7 @@ export function PosTerminal({
 
   const unitCount = draft.lines.reduce((sum, line) => sum + line.quantity, 0);
 
+
   /**
    * One tile per way of selling a thing.
    *
@@ -181,6 +183,69 @@ export function PosTerminal({
     [addLine, draft.lines, toast, tier],
   );
 
+  /**
+   * A scanned code goes straight into the basket.
+   *
+   * Matched on SKU exactly, not by the ordinary search: a scan is an
+   * unambiguous statement about one product, and "put the nearest match in the
+   * basket" is how a shop sells the wrong thing. Anything that is not an exact
+   * SKU is dropped into the search box instead, for a person to look at.
+   *
+   * The scanned product is added in its default unit. A scanner cannot say
+   * whether this is a Box or a Piece, and the default is the one the shop set.
+   */
+  const addByCode = useCallback(
+    async (code: string) => {
+      const trimmed = code.trim();
+      if (!trimmed) return;
+
+      const local = products.find(
+        (candidate) => candidate.sku.toLowerCase() === trimmed.toLowerCase(),
+      );
+
+      if (local) {
+        const unit =
+          local.units.find((u) => u.isDefault && u.isActive) ??
+          local.units.find((u) => u.isActive) ??
+          null;
+        add(local, unit);
+        return;
+      }
+
+      // Not in what is already on screen — ask the server for this exact code.
+      const result = await searchProducts(trimmed);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+
+      const match = result.data.find(
+        (candidate) => candidate.sku.toLowerCase() === trimmed.toLowerCase(),
+      );
+
+      if (!match) {
+        toast.error(`No product with code ${trimmed}.`);
+        // Leave it in the search box so the cashier can see what was scanned
+        // and look for it by hand.
+        setQuery(trimmed);
+        setSearchResults(result.data);
+        return;
+      }
+
+      const unit =
+        match.units.find((u) => u.isDefault && u.isActive) ??
+        match.units.find((u) => u.isActive) ??
+        null;
+      add(match, unit);
+    },
+    [products, add, searchProducts, toast],
+  );
+
+  // Hardware scanners type into the document, not into a focused field.
+  // Disabled while a sheet is open so a scan cannot add to a basket that is
+  // already being paid for.
+  useBarcodeScanner(addByCode, !paymentOpen && !completed);
+
   const submit = async (tenders: readonly TenderInput[]) => {
     setIsSubmitting(true);
 
@@ -246,6 +311,7 @@ export function PosTerminal({
           <SearchInput
             value={query}
             onChange={onQueryChange}
+            onSubmit={addByCode}
             placeholder="Search products by name or SKU"
             label="Search products to sell"
           />

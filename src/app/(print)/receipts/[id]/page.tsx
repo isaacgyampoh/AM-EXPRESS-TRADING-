@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { DomainError } from "@/domain/errors/domain-error";
 import { requireStaff } from "@/infrastructure/auth/session";
 import { getUseCases } from "@/infrastructure/container";
+import { PaperSizePicker } from "@/presentation/components/receipt/paper-size";
 import {
   ReceiptActions,
   ReceiptView,
@@ -53,6 +54,8 @@ export default async function PrintableReceiptPage({
         </Link>
 
         <ReceiptView receipt={receipt} />
+
+        <PaperSizePicker />
 
         <ReceiptActions receiptNumber={receipt.receiptNumber} />
       </div>

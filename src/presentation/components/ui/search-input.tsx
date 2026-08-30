@@ -16,6 +16,7 @@ export function SearchInput({
   placeholder = "Search",
   label = "Search",
   autoFocus,
+  onSubmit,
   className,
 }: {
   value: string;
@@ -23,6 +24,14 @@ export function SearchInput({
   placeholder?: string;
   label?: string;
   autoFocus?: boolean;
+  /**
+   * Enter, with what is actually in the box.
+   *
+   * The raw draft rather than the debounced value: a scanner typing into a
+   * focused field fires Enter within milliseconds of the last character, long
+   * before the 250ms debounce has told anyone what was typed.
+   */
+  onSubmit?: (value: string) => void;
   className?: string;
 }) {
   const id = useId();
@@ -67,6 +76,11 @@ export function SearchInput({
         autoFocus={autoFocus}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !onSubmit) return;
+          event.preventDefault();
+          onSubmit(draft);
+        }}
         placeholder={placeholder}
         className={cn(
           "w-full min-h-12 rounded-xl pl-11 pr-4 text-base",
